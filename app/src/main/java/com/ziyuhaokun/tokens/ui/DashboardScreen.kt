@@ -22,6 +22,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -40,7 +42,13 @@ private class DashboardModel(
 )
 
 /** 图上实际画哪一段 + 两端标签。 */
-private class ChartWindow(val values: List<Double>, val startLabel: String, val endLabel: String)
+private class ChartWindow(
+    val values: List<Double>,
+    val startLabel: String,
+    val endLabel: String,
+    /** 每个点对应的时间标签（按住查看时气泡里显示）。 */
+    val pointLabels: List<String> = emptyList(),
+)
 
 private fun buildModel(usage: Usage, range: Range): DashboardModel = DashboardModel(
     totals = UsageAgg.totals(usage),
@@ -66,11 +74,11 @@ private fun chartWindow(trend: List<UsageAgg.TrendPoint>, range: Range): ChartWi
                 else -> firstActive
             }
             val slice = trend.subList(start, end + 1)
-            ChartWindow(slice.map { it.cost }, "${slice.first().label}:00", "现在")
+            ChartWindow(slice.map { it.cost }, "${slice.first().label}:00", "现在", slice.map { "${it.label}:00" })
         }
 
-        Range.H24 -> ChartWindow(trend.map { it.cost }, "${trend.first().label}:00", "现在")
-        else -> ChartWindow(trend.map { it.cost }, trend.first().label, "今天")
+        Range.H24 -> ChartWindow(trend.map { it.cost }, "${trend.first().label}:00", "现在", trend.map { "${it.label}:00" })
+        else -> ChartWindow(trend.map { it.cost }, trend.first().label, "今天", trend.map { it.label })
     }
 }
 
@@ -214,7 +222,7 @@ private fun HeroCard(
         // 并排时左边只剩一半宽，大数字只能缩得很小。改成上下排，金额独占一整行。
         val stacked = large || integer.length >= 7
         if (stacked) {
-            BigMoney(integer = integer, decimals = decimals, size = moneySize)
+            AnimatedBigMoney(cost = totals.cost, size = moneySize)
             SmallLabel("预估费用")
             Spacer(Modifier.height(12.dp))
             // 两项统计放不下一行时自动折到下一行，不会被挤出卡片。
@@ -228,7 +236,7 @@ private fun HeroCard(
         } else {
             Row(verticalAlignment = Alignment.Bottom) {
                 Column(modifier = Modifier.weight(1f)) {
-                    BigMoney(integer = integer, decimals = decimals, size = moneySize)
+                    AnimatedBigMoney(cost = totals.cost, size = moneySize)
                     SmallLabel("预估费用")
                 }
                 Column(
@@ -247,10 +255,32 @@ private fun HeroCard(
             values = chart.values,
             startLabel = chart.startLabel,
             endLabel = chart.endLabel,
-            height = 126.dp,
-            description = "${range.label} 费用趋势，合计 ${nf.money(totals.cost)}",
+            // 顶部 22dp 留给峰值标签 / 按住查看的气泡，所以比原来的 126dp 高一些，曲线本身的高度基本不变。
+            height = 146.dp,
+            description = "${range.label} 费用趋势，合计 ${nf.money(totals.cost)}，按住左右拖动查看每一天",
+            pointLabels = chart.pointLabels,
+            formatValue = { nf.money(it) },
         )
     }
+}
+
+/**
+ * 大金额：数值变化时从旧值滚到新值。
+ * 单独成一个 Composable：滚动时每帧重组只发生在这里，不会带动整张卡片。
+ * 字号按最终金额定（见 [BigMoney] 的 sizing），滚动过程中不会忽大忽小。
+ */
+@Composable
+private fun AnimatedBigMoney(cost: Double, size: androidx.compose.ui.unit.TextUnit) {
+    val nf = LocalNumberFormats.current
+    val shown = rememberCountUp(target = cost)
+    val (integer, decimals) = nf.moneyParts(shown)
+    BigMoney(
+        integer = integer,
+        decimals = decimals,
+        size = size,
+        sizing = nf.moneyParts(cost),
+        modifier = Modifier.semantics { contentDescription = nf.money(cost) },
+    )
 }
 
 @Composable

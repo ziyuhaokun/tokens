@@ -1,11 +1,15 @@
 package com.ziyuhaokun.tokens.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -35,10 +39,15 @@ import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
@@ -155,6 +164,11 @@ fun BigMoney(
     modifier: Modifier = Modifier,
     size: TextUnit = TokensType.Display,
     minSize: TextUnit = 22.sp,
+    /**
+     * 数字滚动时传「最终金额」的 (整数段, 小数段)：字号按最终金额一次定好，滚动过程中不跟着缩放；
+     * 不传 = 按当前文字自动缩小（原来的行为）。
+     */
+    sizing: Pair<String, String>? = null,
 ) {
     // 开头的非数字部分就是货币符号（负号留在数字里）。
     val prefix = integer.takeWhile { !it.isDigit() && it != '-' }
@@ -163,25 +177,103 @@ fun BigMoney(
     val accent = Palette.Accent
     val muted = Palette.Muted
     val text = remember(prefix, digits, decimals, accent, muted) {
-        buildAnnotatedString {
-            if (prefix.isNotEmpty()) {
-                withStyle(SpanStyle(color = muted, fontSize = 0.52.em)) { append(prefix) }
-                // 符号和数字之间留一道细缝（跟着字号缩放）。
-                withStyle(SpanStyle(fontSize = 0.12.em)) { append(' ') }
-            }
-            // 大字收紧一点：字间距跟着字号走。
-            withStyle(SpanStyle(color = accent, letterSpacing = (-0.033).em)) { append(digits) }
-            withStyle(SpanStyle(color = muted, fontSize = 0.52.em)) { append(decimals) }
-        }
+        moneyText(prefix, digits, decimals, accent, muted)
     }
-    BasicText(
-        text = text,
-        modifier = modifier,
-        style = TextStyle(color = accent, fontSize = size, fontWeight = FontWeight.Light),
-        maxLines = 1,
-        softWrap = false,
-        autoSize = TextAutoSize.StepBased(minFontSize = minSize, maxFontSize = size, stepSize = 1.sp),
-    )
+    if (sizing == null) {
+        BasicText(
+            text = text,
+            modifier = modifier,
+            style = TextStyle(color = accent, fontSize = size, fontWeight = FontWeight.Light),
+            maxLines = 1,
+            softWrap = false,
+            autoSize = TextAutoSize.StepBased(minFontSize = minSize, maxFontSize = size, stepSize = 1.sp),
+        )
+        return
+    }
+
+    // 滚动模式：自己按「最终金额」从大到小一档一档试（和 StepBased 同样的 1sp 步长），
+    // 选出放得下的最大字号，之后数字怎么变都用这个字号。
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier = modifier) {
+        val maxWidth = constraints.maxWidth
+        val fitted = remember(sizing, maxWidth, size, minSize, accent, muted) {
+            val sizingPrefix = sizing.first.takeWhile { !it.isDigit() && it != '-' }
+            val sizingText = moneyText(
+                prefix = sizingPrefix,
+                digits = sizing.first.drop(sizingPrefix.length),
+                decimals = sizing.second,
+                accent = accent,
+                muted = muted,
+            )
+            var current = size.value
+            var chosen = minSize.value
+            while (current >= minSize.value) {
+                val width = measurer.measure(
+                    text = sizingText,
+                    style = TextStyle(fontSize = current.sp, fontWeight = FontWeight.Light),
+                    maxLines = 1,
+                    softWrap = false,
+                ).size.width
+                if (width <= maxWidth) {
+                    chosen = current
+                    break
+                }
+                current -= 1f
+            }
+            chosen.sp
+        }
+        BasicText(
+            text = text,
+            style = TextStyle(color = accent, fontSize = fitted, fontWeight = FontWeight.Light),
+            maxLines = 1,
+            softWrap = false,
+        )
+    }
+}
+
+/** 「$」小号灰 +「41」大号 +「.20」小号灰 三段拼成一段文字（不同 span 不同字号，天然按基线对齐）。 */
+private fun moneyText(
+    prefix: String,
+    digits: String,
+    decimals: String,
+    accent: Color,
+    muted: Color,
+) = buildAnnotatedString {
+    if (prefix.isNotEmpty()) {
+        withStyle(SpanStyle(color = muted, fontSize = 0.52.em)) { append(prefix) }
+        // 符号和数字之间留一道细缝（跟着字号缩放）。
+        withStyle(SpanStyle(fontSize = 0.12.em)) { append(' ') }
+    }
+    // 大字收紧一点：字间距跟着字号走。
+    withStyle(SpanStyle(color = accent, letterSpacing = (-0.033).em)) { append(digits) }
+    withStyle(SpanStyle(color = muted, fontSize = 0.52.em)) { append(decimals) }
+}
+
+/**
+ * 数字滚动：[target] 变了就从当前显示的值平滑滚到新值；第一次出现从 [initial] 滚起。
+ * 动画中途目标又变，从当前显示的值接着滚。「动态效果」关掉时直接等于 [target]。
+ * 返回的是普通 Double，读它的 Composable 会跟着每帧重组 —— 所以只在很小的范围里读。
+ */
+@Composable
+fun rememberCountUp(target: Double, initial: Double = 0.0, durationMillis: Int = 650): Double {
+    val motion = LocalMotionEnabled.current
+    val fraction = remember { Animatable(if (motion) 0f else 1f) }
+    var from by remember { mutableDoubleStateOf(if (motion) initial else target) }
+    var to by remember { mutableDoubleStateOf(target) }
+    LaunchedEffect(target, motion) {
+        if (!motion) {
+            from = target
+            to = target
+            fraction.snapTo(1f)
+            return@LaunchedEffect
+        }
+        if (target == to && fraction.value >= 1f) return@LaunchedEffect
+        from = from + (to - from) * fraction.value
+        to = target
+        fraction.snapTo(0f)
+        fraction.animateTo(1f, tween(durationMillis, easing = FastOutSlowInEasing))
+    }
+    return from + (to - from) * fraction.value
 }
 
 /**
