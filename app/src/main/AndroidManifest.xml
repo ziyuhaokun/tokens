@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 自动更新：下载完新版本后拉起系统安装器。用户第一次还要在系统设置里允许「安装未知应用」。 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- HyperOS 检查桌面快捷方式权限，再处理应用内的小组件添加请求。 -->
     <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
     <!-- Android 9 及以下把图片写进公共 Pictures 目录需要它；10+ 走 MediaStore，不需要。 -->
@@ -71,7 +73,7 @@
                 android:resource="@xml/usage_widget_large_info" />
         </receiver>
 
-        <!-- 小票分享：把 cacheDir/receipts 下的 PNG 以 content:// 递给别的 App。 -->
+        <!-- 小票分享 + 自动更新：把 cacheDir/receipts 下的 PNG、cacheDir/updates 下的 APK 以 content:// 递给别的 App。 -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.receipts"

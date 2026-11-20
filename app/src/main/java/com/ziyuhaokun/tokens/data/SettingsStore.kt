@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -65,6 +66,10 @@ data class StoredSettings(
     val units: UnitStyle = UnitStyle.EN,
     val receiptStyle: ReceiptStyle = ReceiptStyle.CLASSIC,
     val receiptLanguage: ReceiptLanguage = ReceiptLanguage.MIXED,
+    /** 上次成功查询 GitHub 新版本的时间（毫秒）；自动检查据此限频。 */
+    val lastUpdateCheck: Long = 0L,
+    /** 用户点了「跳过此版本」的 tag；之后不再自动弹窗，更高的版本不受影响。 */
+    val skippedVersion: String? = null,
 ) {
     val configured: Boolean get() = !apiKey.isNullOrBlank()
 
@@ -93,6 +98,8 @@ class SettingsStore(private val context: Context) {
         val units = stringPreferencesKey("units")
         val receiptStyle = stringPreferencesKey("receipt_style")
         val receiptLanguage = stringPreferencesKey("receipt_language")
+        val lastUpdateCheck = longPreferencesKey("last_update_check")
+        val skippedVersion = stringPreferencesKey("skipped_version")
     }
 
     // 改主题 / 字号也会让设置流重发；密文没变就别再走一遍 Keystore 解密。
@@ -126,6 +133,8 @@ class SettingsStore(private val context: Context) {
             units = UnitStyle.fromId(prefs[Keys.units]),
             receiptStyle = ReceiptStyle.fromId(prefs[Keys.receiptStyle]),
             receiptLanguage = ReceiptLanguage.fromId(prefs[Keys.receiptLanguage]),
+            lastUpdateCheck = prefs[Keys.lastUpdateCheck] ?: 0L,
+            skippedVersion = prefs[Keys.skippedVersion],
         )
     }.flowOn(Dispatchers.Default)
 
@@ -198,6 +207,14 @@ class SettingsStore(private val context: Context) {
 
     suspend fun saveReceiptLanguage(language: ReceiptLanguage) {
         context.tokensDataStore.edit { it[Keys.receiptLanguage] = language.id }
+    }
+
+    suspend fun saveLastUpdateCheck(millis: Long) {
+        context.tokensDataStore.edit { it[Keys.lastUpdateCheck] = millis }
+    }
+
+    suspend fun saveSkippedVersion(tag: String) {
+        context.tokensDataStore.edit { it[Keys.skippedVersion] = tag }
     }
 
     suspend fun saveUploadProject(value: Boolean?) {

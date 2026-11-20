@@ -126,6 +126,13 @@ fun SettingsScreen(
     onPinWidget: suspend (WidgetSize) -> Boolean,
     onSignOut: () -> Unit,
     onClearCache: () -> Unit,
+    /** 「检查更新」那一行显示的文字（随检查 / 下载进度变化）。 */
+    updateStatus: String = "检查更新",
+    /** 有新版本要处理时为 true，那一行换成醒目的颜色。 */
+    updateAttention: Boolean = false,
+    /** 正在检查时不接点击，免得连点发出一串请求。 */
+    updateBusy: Boolean = false,
+    onCheckUpdate: () -> Unit = {},
 ) {
     var cleared by remember { mutableStateOf(false) }
 
@@ -331,6 +338,12 @@ fun SettingsScreen(
                     fontFamily = NumericFont,
                 )
             }
+            HairlineDivider()
+            ActionRow(
+                label = updateStatus,
+                valueColor = if (updateAttention) Palette.Ok else null,
+                enabled = !updateBusy,
+            ) { onCheckUpdate() }
             HairlineDivider()
             ActionRow("退出登录（清除 Key）", valueColor = Palette.Warn) { onSignOut() }
         }

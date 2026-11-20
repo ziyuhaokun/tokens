@@ -50,6 +50,7 @@ import com.ziyuhaokun.tokens.data.ReceiptBuilder
 import com.ziyuhaokun.tokens.data.ReceiptData
 import com.ziyuhaokun.tokens.data.ReceiptLanguage
 import com.ziyuhaokun.tokens.data.ReceiptStyle
+import com.ziyuhaokun.tokens.data.UpdateState
 import com.ziyuhaokun.tokens.data.Usage
 import com.ziyuhaokun.tokens.data.ThemeMode
 import kotlinx.coroutines.CancellationException
@@ -197,6 +198,16 @@ class MainActivity : ComponentActivity() {
                             .getOrNull() ?: "—"
                     }
 
+                    // 自动更新：状态放在应用级的 UpdateManager 里，转屏不会丢下载进度。
+                    val updater = container.updater
+                    val updateState by updater.state.collectAsStateWithLifecycle()
+                    val updateDialogOpen by updater.dialogOpen.collectAsStateWithLifecycle()
+                    val updateNotice by updater.notice.collectAsStateWithLifecycle()
+                    // 配置好之后才查（引导页上不弹窗）；距上次检查不到 6 小时会自己跳过。
+                    LaunchedEffect(state.ready, state.configured) {
+                        if (state.ready && state.configured) updater.autoCheck()
+                    }
+
                     fun refreshEverything() {
                         viewModel.refresh()
                         heatmap.refresh()
@@ -294,11 +305,37 @@ class MainActivity : ComponentActivity() {
                                                         refreshEverything()
                                                     }
                                                 },
+                                                updateStatus = updateStatusLabel(updateState),
+                                                updateAttention = updateNeedsAttention(updateState),
+                                                updateBusy = updateState is UpdateState.Checking,
+                                                onCheckUpdate = {
+                                                    val s = updateState
+                                                    // 已经有新版本 / 在下载 / 已下载 / 下载失败：直接打开弹窗；其余情况重新检查。
+                                                    if (s is UpdateState.Available || s is UpdateState.Downloading ||
+                                                        s is UpdateState.Ready || (s is UpdateState.Failed && s.info != null)
+                                                    ) {
+                                                        updater.showDialog()
+                                                    } else {
+                                                        updater.checkNow()
+                                                    }
+                                                },
                                             )
                                         }
                                     }
                                 }
                             }
+                        }
+                        if (state.ready && state.configured && updateDialogOpen) {
+                            UpdateDialog(
+                                state = updateState,
+                                currentVersion = updater.currentVersion,
+                                notice = updateNotice,
+                                onUpdate = updater::startDownload,
+                                onInstall = { updater.install() },
+                                onCancelDownload = updater::cancelDownload,
+                                onLater = updater::dismiss,
+                                onSkip = updater::skipThisVersion,
+                            )
                         }
                         // 盖在页面上面；它自己的 BackHandler 后注册，返回键先关小票。
                         receipt?.let { shown ->

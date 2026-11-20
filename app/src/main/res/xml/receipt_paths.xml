@@ -3,4 +3,7 @@
     <cache-path
         name="receipts"
         path="receipts/" />
+    <cache-path
+        name="updates"
+        path="updates/" />
 </paths>

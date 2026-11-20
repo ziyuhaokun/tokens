@@ -96,7 +96,7 @@ fun HeatmapScreen(
     ScreenScaffold(refreshing = state.loading, onRefresh = onRefresh) {
         Spacer(Modifier.height(14.dp))
         ScreenHeader(
-            subtitle = state.accountHandle ?: "vibecafe.ai",
+            subtitle = Fmt.handle(state.accountHandle),
             tab = tab,
             onTab = onTab,
             onSettings = onSettings,

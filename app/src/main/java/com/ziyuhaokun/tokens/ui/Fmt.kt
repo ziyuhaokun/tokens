@@ -12,6 +12,13 @@ val LocalNumberFormats = staticCompositionLocalOf { NumberFormats.DEFAULT }
 
 /** 与货币 / 单位无关的格式化：时长、时刻、多久之前。 */
 object Fmt {
+    /** 页头小字：有用户名就加 @（已经带 @ 的不重复加），没有就回退到站点名。 */
+    fun handle(handle: String?): String = when {
+        handle.isNullOrBlank() -> "vibecafe.ai"
+        handle.startsWith("@") -> handle
+        else -> "@$handle"
+    }
+
     /** "3h 12m" 这种，没有整点就只有分钟。 */
     fun duration(seconds: Long): String {
         val totalMinutes = (seconds / 60).toInt()

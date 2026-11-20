@@ -6,6 +6,14 @@ import org.junit.Test
 class FmtTest {
 
     @Test
+    fun `handle gets an at sign, fallback stays the site name`() {
+        assertEquals("@ziyuhaokun", Fmt.handle("ziyuhaokun"))
+        assertEquals("@me", Fmt.handle("@me"))
+        assertEquals("vibecafe.ai", Fmt.handle(null))
+        assertEquals("vibecafe.ai", Fmt.handle("  "))
+    }
+
+    @Test
     fun `duration shows hours and minutes`() {
         assertEquals("0m", Fmt.duration(0))
         assertEquals("0m", Fmt.duration(59))

@@ -98,7 +98,7 @@ fun DashboardScreen(
 
         // 顶部：标题 + 一级视图切换 + 设置（两个页面共用同一个头）
         ScreenHeader(
-            subtitle = usage?.accountHandle ?: "vibecafe.ai",
+            subtitle = Fmt.handle(usage?.accountHandle),
             tab = tab,
             onTab = onTab,
             onSettings = onSettings,
@@ -302,7 +302,6 @@ private fun CacheCard(cachedInput: Long, tokens: Long, modifier: Modifier = Modi
             DialRing(
                 progress = ratio,
                 value = "${(ratio * 100).toInt()}",
-                caption = "占 tokens",
                 size = 104.dp,
                 description = "缓存读占 tokens ${(ratio * 100).toInt()}%",
             )

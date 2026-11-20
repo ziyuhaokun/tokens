@@ -419,7 +419,7 @@ internal fun DrawScope.drawUsageArea(
 fun DialRing(
     progress: Float,
     value: String,
-    caption: String,
+    caption: String? = null,
     modifier: Modifier = Modifier,
     unit: String = "%",
     size: Dp = 132.dp,
@@ -438,17 +438,17 @@ fun DialRing(
     Box(
         modifier = modifier
             .size(size)
-            .semantics { contentDescription = description ?: "$caption $value$unit" },
+            .semantics { contentDescription = description ?: "${caption.orEmpty()} $value$unit".trim() },
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.size(size)) {
-            val ticks = 72
+            val ticks = 60
             val center = Offset(this.size.width / 2f, this.size.height / 2f)
             val outer = this.size.minDimension / 2f
             val tickLength = 7.dp.toPx() * scale
             val inner = outer - tickLength
-            val arcWidth = (6.dp.toPx() * scale).coerceAtLeast(3.dp.toPx())
-            val arcRadius = inner - 6.dp.toPx() * scale - arcWidth / 2f
+            val arcWidth = (5.dp.toPx() * scale).coerceAtLeast(3.dp.toPx())
+            val arcRadius = inner - 8.dp.toPx() * scale - arcWidth / 2f
             val p = animated.value
             val active = (p * ticks).toInt()
 
@@ -462,7 +462,7 @@ fun DialRing(
                     color = if (lit) colors.textSoft else colors.faint,
                     start = Offset(center.x + cosA * inner, center.y + sinA * inner),
                     end = Offset(center.x + cosA * outer, center.y + sinA * outer),
-                    strokeWidth = (if (lit) 1.8.dp.toPx() else 1.4.dp.toPx()) * scale.coerceAtLeast(0.8f),
+                    strokeWidth = (if (lit) 1.6.dp.toPx() else 1.2.dp.toPx()) * scale.coerceAtLeast(0.8f),
                     cap = StrokeCap.Round,
                 )
             }
@@ -492,8 +492,9 @@ fun DialRing(
             }
         }
         // 数字固定在圆环正中心，不跟下面的小字一起「整块居中」（整块居中会让数字比圆心高一截）。
+        // 默认环里只有数字和单位；传了 [caption] 才在数字下方加一行小字。
         // lineHeight = 字号 + Trim.Both：行框贴着字形，去掉上下的字体留白，视觉中心才是真中心。
-        val valueSp = (34 * scale).coerceAtLeast(22f)
+        val valueSp = (38 * scale).coerceAtLeast(24f)
         val tightLine = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)
         val density = LocalDensity.current
         // 小字紧贴数字下方：数字字形半高约 0.355em，再加 2dp 间隙和小字自己的半高。
@@ -513,7 +514,7 @@ fun DialRing(
                 text = value,
                 color = Palette.Text,
                 fontSize = valueSp.sp,
-                fontWeight = FontWeight.Light,
+                fontWeight = FontWeight.Normal,
                 style = TextStyle(lineHeight = valueSp.sp, lineHeightStyle = tightLine),
                 modifier = Modifier.alignByBaseline(),
             )
@@ -525,12 +526,14 @@ fun DialRing(
                 modifier = Modifier.alignByBaseline().padding(start = 1.dp),
             )
         }
-        Text(
-            text = caption,
-            color = Palette.Dim,
-            fontSize = TokensType.Micro,
-            style = TextStyle(lineHeight = TokensType.Micro, lineHeightStyle = tightLine),
-            modifier = Modifier.offset(y = captionOffset).clearAndSetSemantics { },
-        )
+        if (caption != null) {
+            Text(
+                text = caption,
+                color = Palette.Dim,
+                fontSize = TokensType.Micro,
+                style = TextStyle(lineHeight = TokensType.Micro, lineHeightStyle = tightLine),
+                modifier = Modifier.offset(y = captionOffset).clearAndSetSemantics { },
+            )
+        }
     }
 }
