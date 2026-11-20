@@ -502,7 +502,8 @@ fun DialRing(
             valueSp.sp.toDp() * 0.355f + 2.dp + TokensType.Micro.toDp() / 2
         }
         // 左边放一个透明的单位占位，和右边真单位等宽：数字本身才会水平居中，而不是「数字+%」整体居中。
-        Row(modifier = Modifier.clearAndSetSemantics { }) {
+        // 整行再左移 2dp：视觉上数字和右边的 % 是一个整体，稍微偏左看着更平衡。
+        Row(modifier = Modifier.offset(x = (-2).dp).clearAndSetSemantics { }) {
             Text(
                 text = unit,
                 color = Color.Transparent,
