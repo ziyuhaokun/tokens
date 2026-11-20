@@ -10,7 +10,8 @@ class FmtTest {
         assertEquals("$0.00", Fmt.money(0.0))
         assertEquals("$0.30", Fmt.money(0.3))
         assertEquals("$1.90", Fmt.money(1.9))
-        assertEquals("$1234.50", Fmt.money(1234.5))
+        assertEquals("$1,234.50", Fmt.money(1234.5))
+        assertEquals("$2,460.18", Fmt.money(2460.18))
     }
 
     @Test

@@ -10,7 +10,9 @@ import androidx.glance.appwidget.updateAll
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -48,6 +50,7 @@ class UsageRefreshWorker(
 
 object RefreshScheduler {
     private const val WORK_NAME = "usage-refresh"
+    private const val NOW_WORK_NAME = "usage-refresh-now"
     private const val INTERVAL_MINUTES = 30L
 
     fun schedule(context: Context) {
@@ -62,8 +65,25 @@ object RefreshScheduler {
             .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.UPDATE, request)
     }
 
+    /**
+     * 马上补拉一次小组件的两份数据（今天 + 7 天）。用于：刚配好 key、App 冷启动。
+     * 否则升级后旧缓存被清掉，小组件要等最多 30 分钟才有 7 天数据。
+     */
+    fun refreshNow(context: Context) {
+        val request = OneTimeWorkRequestBuilder<UsageRefreshWorker>()
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build(),
+            )
+            .build()
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork(NOW_WORK_NAME, ExistingWorkPolicy.KEEP, request)
+    }
+
     fun cancel(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        WorkManager.getInstance(context).cancelUniqueWork(NOW_WORK_NAME)
     }
 }
 
@@ -71,7 +91,12 @@ object RefreshScheduler {
 class WidgetSync(private val context: Context) {
 
     suspend fun onCredentialsChanged(configured: Boolean) {
-        if (configured) RefreshScheduler.schedule(context) else RefreshScheduler.cancel(context)
+        if (configured) {
+            RefreshScheduler.schedule(context)
+            RefreshScheduler.refreshNow(context)
+        } else {
+            RefreshScheduler.cancel(context)
+        }
         redraw()
     }
 

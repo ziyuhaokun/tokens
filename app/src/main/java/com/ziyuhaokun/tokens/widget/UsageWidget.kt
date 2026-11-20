@@ -19,6 +19,7 @@ import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
+import androidx.glance.color.ColorProvider as DayNightColorProvider
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -34,19 +35,57 @@ import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.ziyuhaokun.tokens.AppContainer
+import com.ziyuhaokun.tokens.data.AccentChoice
+import com.ziyuhaokun.tokens.data.ThemeMode
+import com.ziyuhaokun.tokens.ui.DarkTokensColors
+import com.ziyuhaokun.tokens.ui.Fmt
+import com.ziyuhaokun.tokens.ui.LightTokensColors
 import com.ziyuhaokun.tokens.ui.MainActivity
+import com.ziyuhaokun.tokens.ui.accentColor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// 和 App 内一致的单色系
-private val Bg = Color(0xFF141619)
-private val TextPrimary = Color(0xFFF2F3F5)
-private val TextSoft = Color(0xFFCFD3D9)
-private val TextMuted = Color(0xFF9AA0A9)
-private val TextDim = Color(0xFF6B7078)
-private val BarActive = Color(0xFFCFD3D9)
-private val BarIdle = Color(0xFF2A2D33)
+// 小组件里不放小于 11sp 的字，跟 App 内的字号阶梯一致。
+private val LabelSize = 11.sp
+private val MoneySize = 26.sp
+private val MoneyDecimalSize = 13.sp
+
+/**
+ * 小组件用的颜色角色。跟 App 里一样只用角色名，不写死色值。
+ *
+ * 深色 / 浅色模式直接取对应那一套；跟随系统时用 Glance 的 day/night ColorProvider，
+ * 系统切换深浅色后桌面重绘就会跟着变。
+ */
+private class WidgetPalette(
+    val bg: ColorProvider,
+    val primary: ColorProvider,
+    val secondary: ColorProvider,
+    val tertiary: ColorProvider,
+    val barActive: ColorProvider,
+    val barIdle: ColorProvider,
+)
+
+private fun widgetPalette(mode: ThemeMode, accent: AccentChoice): WidgetPalette {
+    fun pick(light: Color, dark: Color): ColorProvider = when (mode) {
+        ThemeMode.DARK -> ColorProvider(dark)
+        ThemeMode.LIGHT -> ColorProvider(light)
+        ThemeMode.SYSTEM -> DayNightColorProvider(day = light, night = dark)
+    }
+
+    return WidgetPalette(
+        bg = pick(LightTokensColors.cardBottom, DarkTokensColors.cardBottom),
+        primary = pick(LightTokensColors.text, DarkTokensColors.text),
+        secondary = pick(LightTokensColors.muted, DarkTokensColors.muted),
+        tertiary = pick(LightTokensColors.dim, DarkTokensColors.dim),
+        // 柱子只点亮有数据的那根：强调色压到 0.9 透明，没数据的用发丝线。
+        barActive = pick(
+            accentColor(accent, isDark = false).copy(alpha = 0.9f),
+            accentColor(accent, isDark = true).copy(alpha = 0.9f),
+        ),
+        barIdle = pick(LightTokensColors.hairline, DarkTokensColors.hairline),
+    )
+}
 
 class UsageWidget : GlanceAppWidget() {
 
@@ -66,11 +105,12 @@ class UsageWidget : GlanceAppWidget() {
 
 @Composable
 private fun Content(s: WidgetSnapshot) {
+    val palette = widgetPalette(s.themeMode, s.accent)
     GlanceTheme {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .background(ColorProvider(Bg))
+                .background(palette.bg)
                 .cornerRadius(22.dp)
                 .padding(14.dp)
                 .clickable(actionStartActivity<MainActivity>()),
@@ -81,23 +121,23 @@ private fun Content(s: WidgetSnapshot) {
             ) {
                 Text(
                     text = "Tokens",
-                    style = TextStyle(color = ColorProvider(TextMuted), fontSize = 10.sp),
+                    style = TextStyle(color = palette.secondary, fontSize = LabelSize),
                 )
                 Spacer(GlanceModifier.width(8.dp))
                 Text(
                     text = s.handle ?: "—",
-                    style = TextStyle(color = ColorProvider(TextDim), fontSize = 10.sp),
+                    style = TextStyle(color = palette.tertiary, fontSize = LabelSize),
                     maxLines = 1,
                 )
                 Spacer(GlanceModifier.defaultWeight())
                 // 只有配了 key 才给刷新；未配置时点哪里都是进 App。
                 Text(
                     text = refreshHint(s),
-                    style = TextStyle(color = ColorProvider(TextMuted), fontSize = 10.sp),
+                    style = TextStyle(color = palette.secondary, fontSize = LabelSize),
                     modifier = if (s.configured) {
                         GlanceModifier
                             .clickable(actionRunCallback<RefreshAction>())
-                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                     } else {
                         GlanceModifier
                     },
@@ -107,47 +147,69 @@ private fun Content(s: WidgetSnapshot) {
             Spacer(GlanceModifier.height(12.dp))
 
             Row(modifier = GlanceModifier.fillMaxWidth()) {
-                MoneyBlock("今日", s.todayCost.takeIf { s.configured }, GlanceModifier.defaultWeight())
+                MoneyBlock("今日", s.todayCost, palette, GlanceModifier.defaultWeight())
                 Spacer(GlanceModifier.width(14.dp))
-                MoneyBlock("7 天", s.weekCost.takeIf { s.configured }, GlanceModifier.defaultWeight())
+                MoneyBlock("7 天", s.weekCost, palette, GlanceModifier.defaultWeight())
             }
 
             Spacer(GlanceModifier.height(6.dp))
 
             Text(
-                text = if (s.configured) "${tokens(s.weekTokens)} tokens · 7 天" else (s.message ?: ""),
-                style = TextStyle(color = ColorProvider(TextDim), fontSize = 10.sp),
+                text = if (s.configured) "${s.weekTokens?.let { Fmt.tokens(it) } ?: "—"} tokens · 7 天" else (s.message ?: ""),
+                style = TextStyle(color = palette.tertiary, fontSize = LabelSize),
                 maxLines = 1,
             )
 
             Spacer(GlanceModifier.height(10.dp))
-            Bars(s.trend)
+            Bars(s.trend, palette)
         }
     }
 }
 
 @Composable
-private fun MoneyBlock(label: String, value: Double?, modifier: GlanceModifier) {
+private fun MoneyBlock(
+    label: String,
+    value: Double?,
+    palette: WidgetPalette,
+    modifier: GlanceModifier,
+) {
     // 没配置时显示占位符，不显示 $0.00 这种像真数字的东西。
-    val (integer, decimals) = if (value == null) {
-        "—" to ""
-    } else {
-        val text = String.format(Locale.US, "%.2f", value)
-        val dot = text.indexOf('.')
-        ("$" + text.substring(0, dot)) to text.substring(dot)
-    }
+    // "$" 单独一段小字：跟 App 里 BigMoney 一样「小号 $ + 大号整数 + 小号小数」。
+    val (integer, decimals) = if (value == null) "—" to "" else Fmt.moneyParts(value)
+    val currency = if (integer.startsWith("$")) "$" else null
+    val digits = if (currency != null) integer.drop(1) else integer
     Column(modifier = modifier) {
-        Text(text = label, style = TextStyle(color = ColorProvider(TextDim), fontSize = 10.sp))
+        Text(text = label, style = TextStyle(color = palette.tertiary, fontSize = LabelSize))
         Spacer(GlanceModifier.height(2.dp))
-        Row {
+        // Glance 没有 alignByBaseline，只能按底边对齐，视觉上和基线对齐基本一致。
+        Row(verticalAlignment = Alignment.Bottom) {
+            if (currency != null) {
+                Text(
+                    text = currency,
+                    style = TextStyle(
+                        color = palette.secondary,
+                        fontSize = MoneyDecimalSize,
+                        fontWeight = FontWeight.Normal,
+                    ),
+                    maxLines = 1,
+                )
+            }
             Text(
-                text = integer,
-                style = TextStyle(color = ColorProvider(TextPrimary), fontSize = 24.sp, fontWeight = FontWeight.Normal),
+                text = digits,
+                style = TextStyle(
+                    color = palette.primary,
+                    fontSize = MoneySize,
+                    fontWeight = FontWeight.Normal,
+                ),
                 maxLines = 1,
             )
             Text(
                 text = decimals,
-                style = TextStyle(color = ColorProvider(TextMuted), fontSize = 13.sp, fontWeight = FontWeight.Normal),
+                style = TextStyle(
+                    color = palette.secondary,
+                    fontSize = MoneyDecimalSize,
+                    fontWeight = FontWeight.Normal,
+                ),
                 maxLines = 1,
             )
         }
@@ -155,7 +217,7 @@ private fun MoneyBlock(label: String, value: Double?, modifier: GlanceModifier) 
 }
 
 @Composable
-private fun Bars(values: List<Double>) {
+private fun Bars(values: List<Double>, palette: WidgetPalette) {
     val max = (values.maxOrNull() ?: 0.0).takeIf { it > 0.0 } ?: 1.0
     Row(
         modifier = GlanceModifier.fillMaxWidth().height(28.dp),
@@ -166,7 +228,7 @@ private fun Bars(values: List<Double>) {
                 modifier = GlanceModifier
                     .fillMaxWidth()
                     .height(1.dp)
-                    .background(ColorProvider(BarIdle)),
+                    .background(palette.barIdle),
             ) {}
         } else {
             values.forEach { value ->
@@ -177,7 +239,7 @@ private fun Bars(values: List<Double>) {
                         .padding(horizontal = 2.dp)
                         .height(heightDp.dp)
                         .cornerRadius(3.dp)
-                        .background(ColorProvider(if (value > 0) BarActive.copy(alpha = 0.9f) else BarIdle)),
+                        .background(if (value > 0) palette.barActive else palette.barIdle),
                 ) {}
             }
         }
@@ -189,11 +251,4 @@ private fun refreshHint(s: WidgetSnapshot): String {
     val at = s.updatedAt ?: return "刷新"
     val text = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(at))
     return "刷新 · $text"
-}
-
-private fun tokens(value: Long): String = when {
-    value >= 1_000_000_000 -> String.format(Locale.US, "%.2fB", value / 1e9)
-    value >= 1_000_000 -> String.format(Locale.US, "%.1fM", value / 1e6)
-    value >= 1_000 -> String.format(Locale.US, "%.1fK", value / 1e3)
-    else -> value.toString()
 }

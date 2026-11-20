@@ -6,16 +6,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -31,10 +33,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ziyuhaokun.tokens.data.AccentChoice
 import com.ziyuhaokun.tokens.data.FontScaleChoice
 import com.ziyuhaokun.tokens.data.StoredSettings
@@ -78,32 +84,27 @@ fun SettingsScreen(
             .background(Palette.Bg)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = TokensSpace.Page),
     ) {
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(8.dp))
 
-        // 返回 + 标题
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "← 返回",
-                color = Palette.Muted,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onBack)
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-            )
-        }
+        // 返回 + 标题。TextAction 自带 10dp 横向内边距，往左挪回来才对得上标题的左边缘。
+        TextAction(
+            text = "← 返回",
+            onClick = onBack,
+            modifier = Modifier.offset(x = (-10).dp),
+        )
         Spacer(Modifier.height(6.dp))
-        Text("设置", color = Palette.Text, fontSize = 22.sp, fontWeight = FontWeight.Light)
+        Text("设置", color = Palette.Text, fontSize = TokensType.Title, fontWeight = FontWeight.Light)
         Text(
             text = settings?.apiKey?.let { "API Key 已配置 · ${maskKey(it)}" } ?: "未配置 API Key",
             color = Palette.Dim,
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontSize = TokensType.Caption,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(TokensSpace.CardGap))
 
         // 外观
         SettingsGroup("外观") {
@@ -132,7 +133,7 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(TokensSpace.CardGap))
 
         // 强调色
         SettingsGroup("配色") {
@@ -145,13 +146,13 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "只作用于大金额、选中的标签、图表主线和热力图最亮档。选「单色」就是纯黑白。",
-                color = Palette.Faint,
-                fontSize = 9.sp,
-                lineHeight = 13.sp,
+                color = Palette.Dim,
+                fontSize = TokensType.Caption,
+                lineHeight = TokensType.Caption * 1.45f,
             )
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(TokensSpace.CardGap))
 
         // 数据
         SettingsGroup("数据") {
@@ -159,9 +160,10 @@ fun SettingsScreen(
                 Text(
                     text = settings?.baseUrl ?: "—",
                     color = Palette.TextSoft,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontSize = TokensType.Value,
+                    fontFamily = NumericFont,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             HairlineDivider()
@@ -169,8 +171,9 @@ fun SettingsScreen(
                 Text(
                     text = settings?.apiKey?.let { maskKey(it) } ?: "未配置",
                     color = Palette.Dim,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontSize = TokensType.Value,
+                    fontFamily = NumericFont,
+                    maxLines = 1,
                 )
             }
             HairlineDivider()
@@ -207,7 +210,7 @@ fun SettingsScreen(
             ActionRow("立即刷新") { onRefreshAll() }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(TokensSpace.CardGap))
 
         // 关于
         SettingsGroup("关于") {
@@ -215,16 +218,8 @@ fun SettingsScreen(
                 Text(
                     text = "v$versionName",
                     color = Palette.TextSoft,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-            HairlineDivider()
-            SettingsRow("用量口径") {
-                Text(
-                    text = "费用 = 服务端预估值之和；tokens 含缓存读与缓存写",
-                    color = Palette.Dim,
-                    fontSize = 10.sp,
+                    fontSize = TokensType.Value,
+                    fontFamily = NumericFont,
                 )
             }
             HairlineDivider()
@@ -236,50 +231,64 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsGroup(title: String, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
     Column {
         Text(
             text = title,
             color = Palette.Dim,
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontSize = TokensType.Caption,
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp),
         )
-        SoftCard(contentPadding = 14) { content() }
+        SoftCard(contentPadding = TokensSpace.CardPaddingCompact) { content() }
     }
 }
 
-/** 左标签右控件。控件太宽时允许换行到下一行。 */
+/**
+ * 左标签右控件。大字号时控件换成标签下方一行：
+ * 「文字大小」那种四个选项的分段选择器在窄屏上放不进右侧。
+ */
 @Composable
 private fun SettingsRow(label: String, content: @Composable () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = Palette.TextSoft,
-            fontSize = 12.sp,
-            modifier = Modifier.weight(1f),
-        )
-        content()
+    val stacked = isLargeText()
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .heightIn(min = 48.dp)
+        .padding(vertical = 8.dp)
+
+    if (stacked) {
+        Column(modifier = rowModifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            SettingsRowLabel(label)
+            content()
+        }
+    } else {
+        Row(modifier = rowModifier, verticalAlignment = Alignment.CenterVertically) {
+            SettingsRowLabel(label, Modifier.weight(1f))
+            content()
+        }
     }
 }
 
 @Composable
-private fun ActionRow(label: String, valueColor: androidx.compose.ui.graphics.Color? = null, onClick: () -> Unit) {
-    Text(
-        text = label,
-        color = valueColor ?: Palette.TextSoft,
-        fontSize = 12.sp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-    )
+private fun SettingsRowLabel(label: String, modifier: Modifier = Modifier) {
+    Text(text = label, color = Palette.TextSoft, fontSize = TokensType.Body, modifier = modifier)
 }
 
-/** 一行分段选择器，选中项用强调色描边。 */
+@Composable
+private fun ActionRow(label: String, valueColor: Color? = null, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 12.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(text = label, color = valueColor ?: Palette.TextSoft, fontSize = TokensType.Body)
+    }
+}
+
+/** 一行分段选择器，选中项用强调色描边。每段点击高度 36dp。 */
 @Composable
 private fun <T> SegmentedRow(
     options: List<Pair<T, String>>,
@@ -289,51 +298,65 @@ private fun <T> SegmentedRow(
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         options.forEach { (value, label) ->
             val isOn = value == selected
-            Text(
-                text = label,
-                color = if (isOn) Palette.Text else Palette.Dim,
-                fontSize = 10.sp,
+            val shape = RoundedCornerShape(9.dp)
+            Box(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(7.dp))
-                    .background(if (isOn) Palette.Field else androidx.compose.ui.graphics.Color.Transparent)
+                    .heightIn(min = 36.dp)
+                    .clip(shape)
+                    .background(if (isOn) Palette.Field else Color.Transparent)
                     .border(
                         width = 1.dp,
-                        color = if (isOn) Palette.Accent.copy(alpha = 0.55f) else androidx.compose.ui.graphics.Color.Transparent,
-                        shape = RoundedCornerShape(7.dp),
+                        color = if (isOn) Palette.Accent.copy(alpha = 0.55f) else Color.Transparent,
+                        shape = shape,
                     )
-                    .clickable { if (!isOn) onSelect(value) }
-                    .padding(horizontal = 8.dp, vertical = 5.dp),
-            )
+                    .semantics { this.selected = isOn }
+                    .clickable(role = Role.Tab) { if (!isOn) onSelect(value) }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    color = if (isOn) Palette.Text else Palette.Dim,
+                    fontSize = TokensType.Label,
+                    fontWeight = if (isOn) FontWeight.Medium else FontWeight.Normal,
+                )
+            }
         }
     }
 }
 
+/**
+ * 一排色点：26dp 的色块放在 44dp 的点击区域里（水波纹裁成圆形）。
+ * 选中态不在色块上盖符号，改成外面套一圈 2dp 的正文色细环——
+ * 任何色块上都看得见，也不用担心「✓」跟底色撞色。
+ */
 @Composable
 private fun AccentRow(selected: AccentChoice, onSelect: (AccentChoice) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    val isDark = LocalTokensColors.current.isDark
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
         AccentChoice.entries.forEach { choice ->
-            val color = accentColor(choice, LocalTokensColors.current.isDark)
             val isOn = choice == selected
             Box(
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(TokensSpace.MinTouch)
                     .clip(CircleShape)
-                    .background(color)
-                    .border(
-                        width = if (isOn) 2.dp else 1.dp,
-                        color = if (isOn) Palette.Text else Palette.Hairline,
-                        shape = CircleShape,
-                    )
-                    .clickable { onSelect(choice) },
+                    .semantics {
+                        contentDescription = choice.label
+                        this.selected = isOn
+                    }
+                    .clickable(role = Role.Tab) { onSelect(choice) },
                 contentAlignment = Alignment.Center,
             ) {
-                if (isOn) {
-                    Text(
-                        text = "✓",
-                        color = if (choice == AccentChoice.MONO) Palette.Bg else Palette.Bg,
-                        fontSize = 11.sp,
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(accentColor(choice, isDark))
+                        .border(width = 1.dp, color = Palette.Hairline, shape = CircleShape)
+                        .then(
+                            if (isOn) Modifier.border(2.dp, Palette.Text, CircleShape) else Modifier
+                        ),
+                )
             }
         }
     }

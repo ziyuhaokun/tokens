@@ -17,9 +17,30 @@ import kotlin.coroutines.resumeWithException
 
 sealed class UsageApiException(message: String) : Exception(message) {
     data object Unauthorized : UsageApiException("API Key 无效")
-    class Http(val code: Int, detail: String) : UsageApiException("HTTP $code" + if (detail.isBlank()) "" else " · ${detail.take(160)}")
+    class Http(val code: Int, detail: String) : UsageApiException(describe(code, detail))
     class Network(message: String) : UsageApiException("网络错误：$message")
     class Decode(message: String) : UsageApiException("响应解析失败：$message")
+
+    private companion object {
+        /**
+         * 给用户看的 HTTP 错误。网关报错常常回一整页 HTML，原样显示出来是一堆标签，
+         * 所以只保留纯文本 / JSON 里的一句话。
+         */
+        fun describe(code: Int, detail: String): String {
+            val head = when (code) {
+                in 500..599 -> "服务端出错（HTTP $code）"
+                429 -> "请求太频繁（HTTP 429）"
+                403 -> "没有权限（HTTP 403）"
+                404 -> "接口不存在（HTTP 404），检查服务器地址"
+                else -> "HTTP $code"
+            }
+            val text = detail.trim()
+            if (text.isEmpty() || text.startsWith("<")) return head
+            val message = runCatching { org.json.JSONObject(text).optString("error").ifBlank { null } }.getOrNull()
+                ?: text.lineSequence().first()
+            return "$head · ${message.take(120)}"
+        }
+    }
 }
 
 class UsageApi(

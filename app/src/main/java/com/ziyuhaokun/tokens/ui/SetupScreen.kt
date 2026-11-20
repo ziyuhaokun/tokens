@@ -27,10 +27,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ziyuhaokun.tokens.data.DEFAULT_BASE_URL
@@ -53,7 +55,7 @@ fun SetupScreen(
         Text(
             text = "Tokens",
             color = Palette.Text,
-            fontSize = 30.sp,
+            fontSize = 32.sp,
             fontWeight = FontWeight.Light,
             letterSpacing = (-0.5).sp,
         )
@@ -61,11 +63,11 @@ fun SetupScreen(
         Text(
             text = "输入 vibecafe.ai 的 API Key，直接读云端用量。",
             color = Palette.Muted,
-            fontSize = 12.sp,
+            fontSize = TokensType.Body,
         )
 
         Spacer(Modifier.height(28.dp))
-        SoftCard(contentPadding = 18) {
+        SoftCard(contentPadding = TokensSpace.CardPaddingCompact) {
             CredentialsForm(
                 initialKey = "",
                 initialUrl = DEFAULT_BASE_URL,
@@ -78,11 +80,16 @@ fun SetupScreen(
 
         Spacer(Modifier.height(20.dp))
         Text(
-            text = "Key 从哪来：在电脑上跑过 vibe-usage（CLI 或桌面端）后，~/.vibe-usage/config.json 里的 " +
-                "apiKey；或在 vibecafe.ai/usage/setup 预先签一个 vbu_ 开头的 key。",
-            color = Palette.Faint,
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            text = buildAnnotatedString {
+                append("Key 从哪来：在电脑上跑过 vibe-usage（CLI 或桌面端）后，")
+                withStyle(SpanStyle(fontFamily = NumericFont)) { append("~/.vibe-usage/config.json") }
+                append(" 里的 apiKey；或在 vibecafe.ai/usage/setup 预先签一个 ")
+                withStyle(SpanStyle(fontFamily = NumericFont)) { append("vbu_") }
+                append(" 开头的 key。")
+            },
+            color = Palette.Dim,
+            fontSize = TokensType.Caption,
+            lineHeight = TokensType.Caption * 1.5f,
         )
     }
 }
@@ -108,9 +115,13 @@ fun CredentialsForm(
         OutlinedTextField(
             value = key,
             onValueChange = { key = it.trim() },
-            label = { Text("API Key", fontSize = 11.sp) },
+            label = { Text("API Key", fontSize = TokensType.Caption) },
             placeholder = {
-                Text(if (allowBlankKey) "留空 = 沿用当前 key" else "vbu_…", color = Palette.Faint, fontSize = 13.sp)
+                Text(
+                    text = if (allowBlankKey) "留空 = 沿用当前 key" else "vbu_…",
+                    color = Palette.Dim,
+                    fontSize = TokensType.Body,
+                )
             },
             singleLine = true,
             enabled = !saving,
@@ -126,14 +137,14 @@ fun CredentialsForm(
             Text(
                 text = if (showAdvanced) "收起高级设置" else "高级设置（服务端地址）",
                 color = Palette.Dim,
-                fontSize = 11.sp,
+                fontSize = TokensType.Label,
             )
         }
         if (showAdvanced) {
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it.trim() },
-                label = { Text("API 地址", fontSize = 11.sp) },
+                label = { Text("API 地址", fontSize = TokensType.Caption) },
                 singleLine = true,
                 enabled = !saving,
                 colors = fieldColors(),
@@ -143,14 +154,16 @@ fun CredentialsForm(
 
         if (error != null) {
             Spacer(Modifier.height(10.dp))
-            Text(text = error, color = Palette.Warn, fontSize = 11.sp)
+            Text(text = error, color = Palette.Warn, fontSize = TokensType.Caption)
         }
 
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = { onSave(key, url.ifBlank { DEFAULT_BASE_URL }) },
             enabled = !saving && (allowBlankKey || key.isNotBlank()),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Palette.Text,
@@ -161,7 +174,7 @@ fun CredentialsForm(
         ) {
             Text(
                 text = if (saving) "验证中…" else saveLabel,
-                fontSize = 13.sp,
+                fontSize = TokensType.Body,
                 fontWeight = FontWeight.Medium,
             )
         }
@@ -171,13 +184,13 @@ fun CredentialsForm(
             Row(modifier = Modifier.fillMaxWidth()) {
                 if (onSignOut != null) {
                     TextButton(onClick = onSignOut) {
-                        Text("退出登录", color = Palette.Warn, fontSize = 12.sp)
+                        Text("退出登录", color = Palette.Warn, fontSize = TokensType.Body)
                     }
                 }
                 Spacer(Modifier.weight(1f))
                 if (onCancel != null) {
                     TextButton(onClick = onCancel) {
-                        Text("取消", color = Palette.Muted, fontSize = 12.sp)
+                        Text("取消", color = Palette.Muted, fontSize = TokensType.Body)
                     }
                 }
             }

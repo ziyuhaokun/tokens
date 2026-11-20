@@ -11,7 +11,10 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ziyuhaokun.tokens.data.AccentChoice
 import com.ziyuhaokun.tokens.data.FontScaleChoice
 import com.ziyuhaokun.tokens.data.ThemeMode
@@ -51,8 +54,10 @@ val DarkTokensColors = TokensColors(
     hairlineSoft = Color(0xFF1F2226),
     text = Color(0xFFF2F3F5),
     textSoft = Color(0xFFCFD3D9),
-    muted = Color(0xFF9AA0A9),
-    dim = Color(0xFF6B7078),
+    // muted / dim 是文字色，在卡片底上对比度分别约 7.4:1 / 5.3:1。
+    muted = Color(0xFFA6ABB3),
+    dim = Color(0xFF8A9099),
+    // faint 只给线条、空格、未点亮的刻度用，不许拿来写字（对比度只有 ~1.6:1）。
     faint = Color(0xFF3A3E45),
     ok = Color(0xFF9BE6A8),
     warn = Color(0xFFFF7A70),
@@ -70,9 +75,11 @@ val LightTokensColors = TokensColors(
     hairlineSoft = Color(0xFFE5E7EA),
     text = Color(0xFF101215),
     textSoft = Color(0xFF2A2E34),
-    muted = Color(0xFF5B616A),
-    dim = Color(0xFF868C95),
-    faint = Color(0xFFB6BBC2),
+    // 在 #F1F2F4 卡片底上 muted / dim 约 7:1 / 4.8:1。
+    muted = Color(0xFF4E545C),
+    dim = Color(0xFF646A73),
+    // 同上：只用于非文字元素。
+    faint = Color(0xFFC3C7CD),
     ok = Color(0xFF2C7F4B),
     warn = Color(0xFFC0392B),
     accent = Color(0xFF101215),
@@ -86,6 +93,48 @@ val LocalMotionEnabled = staticCompositionLocalOf { true }
 
 /** 用户选的字号倍率。布局靠它决定要不要换行/缩字号，避免大字号挤成一团。 */
 val LocalFontScale = staticCompositionLocalOf { 1f }
+
+/**
+ * 字号阶梯。界面里只用这些，不再到处写死 sp。
+ * 任何文字不小于 [Micro]（11sp）—— 之前 7~10sp 的字在手机上基本看不清。
+ */
+object TokensType {
+    /** 首页 / 年度的大金额。 */
+    val Display = 46.sp
+    /** 页面标题（「设置」）、次级大数字。 */
+    val Title = 22.sp
+    /** App 名、页头。 */
+    val Header = 19.sp
+    /** 卡片标题（「今天」「按模型」）。 */
+    val CardTitle = 15.sp
+    /** 正文、列表名称、可点的文字链接。 */
+    val Body = 14.sp
+    /** 结构化数字（等宽）。 */
+    val Value = 14.sp
+    /** 数字旁的标签（「Token」「活跃」）。 */
+    val Label = 13.sp
+    /** 次要说明、脚注。 */
+    val Caption = 12.sp
+    /** 最小号：坐标轴、图例、热力图刻度。 */
+    val Micro = 11.sp
+}
+
+/** 间距与圆角。 */
+object TokensSpace {
+    val Page = 16.dp
+    val CardGap = 14.dp
+    val CardPadding = 20.dp
+    val CardPaddingCompact = 16.dp
+    val CardRadius = 24.dp
+    /** 可点击元素的最小点击高度。 */
+    val MinTouch = 44.dp
+}
+
+/**
+ * 数字字体：等宽，跟桌面端「65.5M / 3h 12m / 9:00」那种排版一致。
+ * 集中在这一处，以后换成打包进来的字体（如 JetBrains Mono）只改这一行。
+ */
+val NumericFont: FontFamily = FontFamily.Monospace
 
 /** 大字号时把多列改成单列。 */
 @Composable

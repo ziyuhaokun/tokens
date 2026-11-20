@@ -3,11 +3,12 @@ package com.ziyuhaokun.tokens.ui
 import java.util.Locale
 
 object Fmt {
-    fun money(value: Double): String = "$" + String.format(Locale.US, "%.2f", value)
+    /** 带千分位：$2,460.18。 */
+    fun money(value: Double): String = "$" + String.format(Locale.US, "%,.2f", value)
 
     /** 拆成 "$578" + ".22"：大号整数 + 小号小数，桌面端那套排版。 */
     fun moneyParts(value: Double): Pair<String, String> {
-        val text = String.format(Locale.US, "%.2f", value)
+        val text = String.format(Locale.US, "%,.2f", value)
         val dot = text.indexOf('.')
         return if (dot < 0) "$text" to ".00" else "$" + text.substring(0, dot) to text.substring(dot)
     }

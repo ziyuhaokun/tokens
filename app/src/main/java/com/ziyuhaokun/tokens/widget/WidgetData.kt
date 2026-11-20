@@ -1,7 +1,9 @@
 package com.ziyuhaokun.tokens.widget
 
+import com.ziyuhaokun.tokens.data.AccentChoice
 import com.ziyuhaokun.tokens.data.Range
 import com.ziyuhaokun.tokens.data.StoredSettings
+import com.ziyuhaokun.tokens.data.ThemeMode
 import com.ziyuhaokun.tokens.data.Usage
 import com.ziyuhaokun.tokens.data.UsageAgg
 import com.ziyuhaokun.tokens.data.UsageRepository
@@ -15,20 +17,24 @@ import kotlinx.coroutines.flow.mapLatest
 data class WidgetSnapshot(
     val configured: Boolean,
     val handle: String?,
-    val todayCost: Double,
-    val weekCost: Double,
-    val weekTokens: Long,
+    /** null = 本地还没有这份缓存（例如刚升级、还没拉过 7 天），显示「—」而不是 $0.00。 */
+    val todayCost: Double?,
+    val weekCost: Double?,
+    val weekTokens: Long?,
     val trend: List<Double>,
     val updatedAt: Long?,
     val message: String?,
+    /** 外观跟着 App 的设置走，小组件不再写死深色。 */
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val accent: AccentChoice = AccentChoice.MONO,
 ) {
     companion object {
         val NOT_CONFIGURED = WidgetSnapshot(
             configured = false,
             handle = null,
-            todayCost = 0.0,
-            weekCost = 0.0,
-            weekTokens = 0L,
+            todayCost = null,
+            weekCost = null,
+            weekTokens = null,
             trend = emptyList(),
             updatedAt = null,
             message = "先打开 App 填 API Key",
@@ -53,8 +59,13 @@ object WidgetData {
             .flowOn(Dispatchers.Default)
 
     private suspend fun read(repository: UsageRepository, settings: StoredSettings): WidgetSnapshot {
-        // 没配 key（包括刚退出登录）：不显示任何旧数字。
-        if (!settings.configured) return WidgetSnapshot.NOT_CONFIGURED
+        // 没配 key（包括刚退出登录）：不显示任何旧数字，但外观仍按用户设置来。
+        if (!settings.configured) {
+            return WidgetSnapshot.NOT_CONFIGURED.copy(
+                themeMode = settings.themeMode,
+                accent = settings.accent,
+            )
+        }
 
         val today = repository.readCacheRaw(Range.TODAY, settings)?.let { entry ->
             runCatching { Usage.parse(entry.json) }.getOrNull()?.let { it to entry.fetchedAt }
@@ -67,14 +78,16 @@ object WidgetData {
         return WidgetSnapshot(
             configured = true,
             handle = today?.first?.accountHandle ?: weekUsage?.accountHandle,
-            todayCost = today?.first?.let { usage -> UsageAgg.totals(usage).cost } ?: 0.0,
-            weekCost = weekTotals?.cost ?: 0.0,
-            weekTokens = weekTotals?.tokens ?: 0L,
+            todayCost = today?.first?.let { usage -> UsageAgg.totals(usage).cost },
+            weekCost = weekTotals?.cost,
+            weekTokens = weekTotals?.tokens,
             trend = weekUsage?.let { usage ->
                 UsageAgg.trend(usage, Range.D7).map { it.cost }
             } ?: emptyList(),
             updatedAt = maxOf(today?.second ?: 0L, week?.second ?: 0L).takeIf { it > 0 },
             message = null,
+            themeMode = settings.themeMode,
+            accent = settings.accent,
         )
     }
 }
