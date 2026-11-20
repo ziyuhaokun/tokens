@@ -65,6 +65,8 @@ class UsageRepository(
     suspend fun saveCurrency(choice: CurrencyChoice) = store.saveCurrency(choice)
     suspend fun saveCnyPerUsd(rate: Double): Boolean = store.saveCnyPerUsd(rate)
     suspend fun saveUnits(style: UnitStyle) = store.saveUnits(style)
+    suspend fun saveReceiptStyle(style: ReceiptStyle) = store.saveReceiptStyle(style)
+    suspend fun saveReceiptLanguage(language: ReceiptLanguage) = store.saveReceiptLanguage(language)
     suspend fun clearCache() = cache.clearAll()
 
     /** 先网络、失败回退缓存：网络失败也能看到上次的数据 + 时间戳。 */

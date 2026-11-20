@@ -29,6 +29,15 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -125,8 +134,8 @@ fun SmallLabel(text: String, modifier: Modifier = Modifier, color: Color = Palet
  * 「$」小号灰 +「41」大号细体 +「.20」小号灰 —— 桌面端金额排版。
  * integer 以货币符号（$ / ¥）开头时自动把符号拆出来单独排；tokens 这类没有符号的照常显示。
  *
- * 几段必须对齐**基线**（alignByBaseline），不能用 Alignment.Bottom：
- * 底边对齐的是文字盒子的底，字号差一半时小字会整体沉到基线下。
+ * 三段拼成**一段文字**（不同 span 不同字号）：天然按基线对齐，而且可以整体自动缩小——
+ * 金额很长时（例如 ¥274,240.24）一行放不下就逐级缩到 [minSize]，绝不换行、不裁掉小数。
  */
 @Composable
 fun BigMoney(
@@ -134,41 +143,58 @@ fun BigMoney(
     decimals: String,
     modifier: Modifier = Modifier,
     size: TextUnit = TokensType.Display,
+    minSize: TextUnit = 22.sp,
 ) {
     // 开头的非数字部分就是货币符号（负号留在数字里）。
     val prefix = integer.takeWhile { !it.isDigit() && it != '-' }
-    val currency = prefix.ifEmpty { null }
     val digits = integer.drop(prefix.length)
-    Row(modifier = modifier) {
-        if (currency != null) {
-            Text(
-                text = currency,
-                color = Palette.Muted,
-                fontSize = size * 0.52f,
-                fontWeight = FontWeight.Light,
-                modifier = Modifier.alignByBaseline().padding(end = 2.dp),
-            )
+    // 强调色只作用在这类关键数字上；选「单色」时它等于正文色。
+    val accent = Palette.Accent
+    val muted = Palette.Muted
+    val text = remember(prefix, digits, decimals, accent, muted) {
+        buildAnnotatedString {
+            if (prefix.isNotEmpty()) {
+                withStyle(SpanStyle(color = muted, fontSize = 0.52.em)) { append(prefix) }
+                // 符号和数字之间留一道细缝（跟着字号缩放）。
+                withStyle(SpanStyle(fontSize = 0.12.em)) { append(' ') }
+            }
+            // 大字收紧一点：字间距跟着字号走。
+            withStyle(SpanStyle(color = accent, letterSpacing = (-0.033).em)) { append(digits) }
+            withStyle(SpanStyle(color = muted, fontSize = 0.52.em)) { append(decimals) }
         }
-        Text(
-            text = digits,
-            // 强调色只作用在这类关键数字上；选「单色」时它等于正文色。
-            color = Palette.Accent,
-            fontSize = size,
-            fontWeight = FontWeight.Light,
-            // 大字收紧一点：字间距跟着字号走（46sp ≈ -1.5sp）。
-            letterSpacing = size * -0.033f,
-            maxLines = 1,
-            modifier = Modifier.alignByBaseline(),
-        )
-        Text(
-            text = decimals,
-            color = Palette.Muted,
-            fontSize = size * 0.52f,
-            fontWeight = FontWeight.Light,
-            maxLines = 1,
-            modifier = Modifier.alignByBaseline(),
-        )
     }
+    BasicText(
+        text = text,
+        modifier = modifier,
+        style = TextStyle(color = accent, fontSize = size, fontWeight = FontWeight.Light),
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(minFontSize = minSize, maxFontSize = size, stepSize = 1.sp),
+    )
+}
+
+/**
+ * 单行、放不下就自动缩小的大号文字（例如「2459h 46m」）。
+ * 不换行、不截断，最小缩到 [minSize]。
+ */
+@Composable
+fun FitText(
+    text: String,
+    color: Color,
+    size: TextUnit,
+    modifier: Modifier = Modifier,
+    minSize: TextUnit = 16.sp,
+    fontWeight: FontWeight = FontWeight.Light,
+    letterSpacing: TextUnit = TextUnit.Unspecified,
+) {
+    BasicText(
+        text = text,
+        modifier = modifier,
+        style = TextStyle(color = color, fontSize = size, fontWeight = fontWeight, letterSpacing = letterSpacing),
+        maxLines = 1,
+        softWrap = false,
+        autoSize = TextAutoSize.StepBased(minFontSize = minSize, maxFontSize = size, stepSize = 1.sp),
+    )
 }
 
 /** 「Token  65.5M」这种 label / value 一行的小统计，值用等宽数字。 */

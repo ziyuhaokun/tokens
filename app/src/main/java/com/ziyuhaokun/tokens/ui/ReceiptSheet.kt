@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,9 +40,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
@@ -56,6 +60,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.ziyuhaokun.tokens.data.NumberFormats
 import com.ziyuhaokun.tokens.data.ReceiptData
+import com.ziyuhaokun.tokens.data.ReceiptLanguage
+import com.ziyuhaokun.tokens.data.ReceiptStyle
 import com.ziyuhaokun.tokens.export.ReceiptExporter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -71,16 +77,29 @@ private val Scrim = Color.Black.copy(alpha = 0.55f)
 private val ActionPill = Color(0xFF1A1A1A).copy(alpha = 0.82f)
 private val ActionPillDisabled = Color(0xFF1A1A1A).copy(alpha = 0.38f)
 
+/** 出纸口那条黑条的半透明度。 */
+private const val SlotAlpha = 0.6f
+
+/** 纸的投影需要一点余量，裁剪框的左右 / 下方各留这么多。 */
+private val SlotShadowRoom = 12.dp
+
 /**
- * 小票浮层：从屏幕顶端「打印」出来的一张纸，底部三个操作（保存 / 分享 / 关闭）。
+ * 小票浮层：从屏幕顶端的出纸口「打印」出来的一张纸，底部三个操作（保存 / 分享 / 关闭）。
  *
  * 三层结构，各自的职责不能混：
- * 1. 最外层是遮罩，点一下关掉；返回键同样关掉。
- * 2. 中间一层只做揭示裁剪（[printReveal]），它必须在录制之外，否则存下来的图只有露出的那截。
+ * 1. 最外层是遮罩；空白处（含纸旁边、纸下方的空档）点一下关掉，返回键同样关掉。
+ * 2. 中间一层只做「出纸」：裁剪线固定在出纸口，纸从上方平移下来。它必须在录制之外，
+ *    否则存下来的图只有露出的那截。
  * 3. 卡片自己带 [captureInto]，把完整内容录进 graphicsLayer，保存 / 分享都取这一层的位图。
  */
 @Composable
-fun ReceiptSheet(data: ReceiptData, formats: NumberFormats, onDismiss: () -> Unit) {
+fun ReceiptSheet(
+    data: ReceiptData,
+    formats: NumberFormats,
+    style: ReceiptStyle,
+    language: ReceiptLanguage,
+    onDismiss: () -> Unit,
+) {
     val motion = LocalMotionEnabled.current
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
@@ -176,7 +195,7 @@ fun ReceiptSheet(data: ReceiptData, formats: NumberFormats, onDismiss: () -> Uni
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // 遮罩：点空白处关闭。
+        // 遮罩：最底下一层，点空白处关闭。
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -192,8 +211,13 @@ fun ReceiptSheet(data: ReceiptData, formats: NumberFormats, onDismiss: () -> Uni
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                // 吞掉纸面上的点击，别让它们穿到遮罩上把小票关掉。
-                .pointerInput(Unit) { detectTapGestures { } },
+                // 遮罩上面这层盖住了整屏，空白处的点击得由它自己接住再关掉；
+                // 纸和按钮各自吞掉属于自己的点击，不往下传。
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss,
+                ),
         ) {
             Column(
                 modifier = Modifier
@@ -203,10 +227,12 @@ fun ReceiptSheet(data: ReceiptData, formats: NumberFormats, onDismiss: () -> Uni
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Spacer(Modifier.height(8.dp))
-                Box(Modifier.printReveal { progress.value }) {
+                PaperSlot(progress = { progress.value }) {
                     ReceiptCard(
                         data = data,
                         formats = formats,
+                        style = style,
+                        language = language,
                         modifier = Modifier.captureInto(graphicsLayer),
                     )
                 }
@@ -224,7 +250,11 @@ fun ReceiptSheet(data: ReceiptData, formats: NumberFormats, onDismiss: () -> Uni
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    // 按钮行内部的空白也不该关掉浮层。
+                    .pointerInput(Unit) { detectTapGestures { } },
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 PillButton("保存", enabled = !busy, modifier = Modifier.weight(1f), onClick = onSave)
@@ -258,14 +288,47 @@ private val PrintKeyframes = keyframes<Float> {
 }
 
 /**
- * 从上往下的揭示裁剪。画在录制层外面，所以被裁掉的只是屏幕上的画面，
- * 存下来的小票图始终是完整的。
+ * 出纸：裁剪线固定在顶部出纸口，纸本身从上方平移下来（-整张高度 → 0）。
+ *
+ * 平移用的是 layout 层（graphicsLayer），裁剪用的是外层的 clipToBounds，两者都在
+ * [captureInto] 的录制层外面 —— 所以屏幕上只露出一截，存下来的小票始终是完整的一张。
  */
-private fun Modifier.printReveal(progress: () -> Float): Modifier = drawWithContent {
-    val fraction = progress().coerceIn(0f, 1f)
-    if (fraction <= 0f) return@drawWithContent
-    clipRect(right = size.width, bottom = size.height * fraction) {
-        this@drawWithContent.drawContent()
+@Composable
+private fun PaperSlot(progress: () -> Float, content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            // 左右 / 下方留出投影的余量，顶部一点不留：那边就是裁剪线。
+            .padding(start = SlotShadowRoom, end = SlotShadowRoom, bottom = SlotShadowRoom)
+            .clipToBounds(),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Box(
+            modifier = Modifier
+                .graphicsLayer {
+                    // 0 → 纸在裁剪线上面一整张（看不见）；1 → 正好落位。
+                    translationY = -(1f - progress().coerceIn(0f, 1f)) * size.height
+                }
+                // 纸面上的点击不往下传，要不点小票本身就被当成「点空白关掉」。
+                .pointerInput(Unit) { detectTapGestures { } },
+        ) {
+            content()
+        }
+        // 出纸口：纸已经在外面了（progress = 1）就淡到看不见。
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .width(ReceiptWidth + 12.dp)
+                .height(4.dp)
+                .drawBehind {
+                    val alpha = (1f - progress().coerceIn(0f, 1f)) * SlotAlpha
+                    if (alpha <= 0.01f) return@drawBehind
+                    drawRoundRect(
+                        color = Color.Black.copy(alpha = alpha),
+                        cornerRadius = CornerRadius(size.height / 2f),
+                    )
+                },
+        )
     }
 }
 

@@ -35,6 +35,8 @@ data class StoredSettings(
     /** 1 美元折多少人民币；只在 currency = CNY 时用到。 */
     val cnyPerUsd: Double = DEFAULT_CNY_PER_USD,
     val units: UnitStyle = UnitStyle.EN,
+    val receiptStyle: ReceiptStyle = ReceiptStyle.CLASSIC,
+    val receiptLanguage: ReceiptLanguage = ReceiptLanguage.MIXED,
 ) {
     val configured: Boolean get() = !apiKey.isNullOrBlank()
 
@@ -61,6 +63,8 @@ class SettingsStore(private val context: Context) {
         val currency = stringPreferencesKey("currency")
         val cnyPerUsd = doublePreferencesKey("cny_per_usd")
         val units = stringPreferencesKey("units")
+        val receiptStyle = stringPreferencesKey("receipt_style")
+        val receiptLanguage = stringPreferencesKey("receipt_language")
     }
 
     // 改主题 / 字号也会让设置流重发；密文没变就别再走一遍 Keystore 解密。
@@ -89,6 +93,8 @@ class SettingsStore(private val context: Context) {
             currency = CurrencyChoice.fromId(prefs[Keys.currency]),
             cnyPerUsd = prefs[Keys.cnyPerUsd]?.takeIf { it in CNY_RATE_RANGE } ?: DEFAULT_CNY_PER_USD,
             units = UnitStyle.fromId(prefs[Keys.units]),
+            receiptStyle = ReceiptStyle.fromId(prefs[Keys.receiptStyle]),
+            receiptLanguage = ReceiptLanguage.fromId(prefs[Keys.receiptLanguage]),
         )
     }.flowOn(Dispatchers.Default)
 
@@ -148,6 +154,14 @@ class SettingsStore(private val context: Context) {
 
     suspend fun saveUnits(style: UnitStyle) {
         context.tokensDataStore.edit { it[Keys.units] = style.id }
+    }
+
+    suspend fun saveReceiptStyle(style: ReceiptStyle) {
+        context.tokensDataStore.edit { it[Keys.receiptStyle] = style.id }
+    }
+
+    suspend fun saveReceiptLanguage(language: ReceiptLanguage) {
+        context.tokensDataStore.edit { it[Keys.receiptLanguage] = language.id }
     }
 
     suspend fun saveUploadProject(value: Boolean?) {

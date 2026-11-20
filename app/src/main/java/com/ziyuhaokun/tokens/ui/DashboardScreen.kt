@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -209,13 +210,19 @@ private fun HeroCard(
             LocalFontScale.current >= 1.3f -> 32.sp
             else -> 38.sp
         }
-        if (large) {
+        // 金额整数段（含符号和千分位）到 7 个字符（例如 ¥274,240）就不再和右侧统计挤一行：
+        // 并排时左边只剩一半宽，大数字只能缩得很小。改成上下排，金额独占一整行。
+        val stacked = large || integer.length >= 7
+        if (stacked) {
             BigMoney(integer = integer, decimals = decimals, size = moneySize)
             SmallLabel("预估费用")
             Spacer(Modifier.height(12.dp))
-            Row {
+            // 两项统计放不下一行时自动折到下一行，不会被挤出卡片。
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(18.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
                 StatPair("Token", nf.tokens(totals.tokens))
-                Spacer(Modifier.width(18.dp))
                 StatPair("活跃", Fmt.duration(totals.activeSeconds))
             }
         } else {
@@ -296,20 +303,19 @@ private fun ActivityCard(
     SoftCard(modifier = modifier, contentPadding = TokensSpace.CardPaddingCompact) {
         CardLabel("活跃")
         Spacer(Modifier.height(16.dp))
-        Text(
+        // 一年的活跃时长能到「2459h 46m」：放不下就整体缩小，不再裁掉末尾的 m。
+        FitText(
             text = Fmt.duration(activeSeconds),
             color = Palette.Text,
-            fontSize = if (isLargeText()) 26.sp else 32.sp,
-            fontWeight = FontWeight.Light,
+            size = if (isLargeText()) 26.sp else 32.sp,
             letterSpacing = (-0.5).sp,
-            maxLines = 1,
-            softWrap = false,
         )
         SmallLabel("生成耗时合计")
         Spacer(Modifier.height(16.dp))
         StatPair("Sessions", sessions.toString())
         Spacer(Modifier.height(6.dp))
-        StatPair("设备", "$hosts 台")
+        // 等宽字体里空格占一整格，数字和「台」之间不留空格。
+        StatPair("设备", "${hosts}台")
         if (sessions == 0) {
             Spacer(Modifier.height(10.dp))
             SmallLabel("服务端无 sessions")

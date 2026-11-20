@@ -59,3 +59,35 @@ enum class UnitStyle(val id: String, val label: String) {
 
 /** 默认汇率：1 美元 = 7.10 人民币。不联网拉实时汇率，用户可在设置里改。 */
 const val DEFAULT_CNY_PER_USD = 7.10
+
+/** 小票的纸张样式。具体配色 / 撕边 / 版式在 ui/ReceiptStyles.kt。 */
+enum class ReceiptStyle(val id: String, val label: String) {
+    /** 米白热敏纸 + 锯齿撕边（默认）。 */
+    CLASSIC("classic", "经典热敏"),
+    /** 纯白纸、直边圆角、细线，最克制。 */
+    MINIMAL("minimal", "极简白"),
+    /** 黑纸白字。 */
+    NIGHT("night", "夜间黑"),
+    /** 牛皮纸 + 深棕墨。 */
+    KRAFT("kraft", "牛皮纸"),
+    /** 黑底绿字的终端风。 */
+    TERMINAL("terminal", "终端绿");
+
+    companion object {
+        fun fromId(id: String?): ReceiptStyle = entries.firstOrNull { it.id == id } ?: CLASSIC
+    }
+}
+
+/** 小票上的文字语言。 */
+enum class ReceiptLanguage(val id: String, val label: String) {
+    /** 纯中文：日期、单号、明细、合计全部中文。 */
+    ZH("zh", "中文"),
+    /** 纯英文。 */
+    EN("en", "English"),
+    /** 混合：英文栏目标题（DATE / TOTAL TOKEN / TOOLS）+ 中文明细，默认。 */
+    MIXED("mixed", "混合");
+
+    companion object {
+        fun fromId(id: String?): ReceiptLanguage = entries.firstOrNull { it.id == id } ?: MIXED
+    }
+}

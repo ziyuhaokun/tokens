@@ -124,7 +124,8 @@ fun AreaChart(
                 path = line,
                 color = colors.accent,
                 style = Stroke(
-                    width = 2.5.dp.toPx(),
+                    // 点很密（180 / 365 天）时粗线会糊成一团，改细。
+                    width = (if (values.size > 60) 1.5.dp else 2.5.dp).toPx(),
                     cap = StrokeCap.Round,
                     join = StrokeJoin.Round,
                 ),

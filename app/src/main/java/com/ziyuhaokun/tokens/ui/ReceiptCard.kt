@@ -17,84 +17,79 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ziyuhaokun.tokens.data.NumberFormats
 import com.ziyuhaokun.tokens.data.Range
 import com.ziyuhaokun.tokens.data.ReceiptData
+import com.ziyuhaokun.tokens.data.ReceiptLanguage
 import com.ziyuhaokun.tokens.data.ReceiptLine
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Locale
+import com.ziyuhaokun.tokens.data.ReceiptStyle
 import kotlin.math.abs
-import kotlin.math.ceil
-
-/*
- * 小票永远是「一张纸」：纸色、墨色写死在这里，不跟 App 的深色/浅色主题走。
- * 分享出去的图片里也只有这张纸，所以不能引用主题色。
- */
-private val ReceiptPaper = Color(0xFFF7F5EF)
-private val ReceiptInk = Color(0xFF1A1A1A)
-private val ReceiptInkSoft = Color(0xFF6B6B6B)
-private val ReceiptInkFaint = Color(0x471A1A1A)
-
-private val ReceiptWidth = 300.dp
-private val ReceiptTooth = 6.dp
-private val ReceiptToothPitch = 12.dp
 
 /** 条码的横向单位总数：条纹按 1~3 个单位宽铺满整行。 */
 private const val BarcodeUnits = 96
 
 /**
- * 用量小票：热敏纸样式的一张固定宽度卡片。
+ * 用量小票：固定宽度的一张纸，纸张样式和文字语言都由调用方给定。
  *
- * 只负责画，不负责保存/分享/动画 —— 截图由 [ReceiptSheet] 用 graphicsLayer 抓，
- * 所以这里的每个像素都必须来自 [data] 和 [formats]，不能引用主题色或随机数
- * （同一次打印必须印出同一张图）。
+ * 只负责画，不负责保存 / 分享 / 动画 —— 截图由 [ReceiptSheet] 用 graphicsLayer 抓，
+ * 所以这里的每个像素都必须来自 [data] / [formats] / [style] / [language]，
+ * 不能引用主题色或随机数（同一次打印必须印出同一张图）。
  */
 @Composable
-fun ReceiptCard(data: ReceiptData, formats: NumberFormats, modifier: Modifier = Modifier) {
-    val shape = remember { TornPaperShape(ReceiptTooth, ReceiptToothPitch) }
-    val printed = remember(data.printedAt) { printedStamp(data.printedAt) }
+fun ReceiptCard(
+    data: ReceiptData,
+    formats: NumberFormats,
+    style: ReceiptStyle,
+    language: ReceiptLanguage,
+    modifier: Modifier = Modifier,
+) {
+    val theme = remember(style) { receiptTheme(style) }
+    val text = remember(language) { receiptStrings(language) }
+    val shape = remember(theme) { ReceiptPaperShape(theme.edge, theme.cornerRadius) }
+    val printed = remember(data.printedAt, text.datePattern) {
+        receiptStamp(data.printedAt, text.datePattern)
+    }
     val bars = remember(data.number) { barcodeBars(data.number) }
+    // 锯齿 / 咬边给纸边留出高度，直边就不用。
+    val edge = if (theme.edge == ReceiptEdge.STRAIGHT) 0.dp else ReceiptEdgeBand
 
     Column(
         modifier = modifier
             .width(ReceiptWidth)
-            .shadow(elevation = 10.dp, shape = shape, clip = false)
-            .background(ReceiptPaper, shape)
-            .padding(horizontal = 18.dp, vertical = ReceiptTooth + 14.dp),
+            .then(if (theme.shadow) Modifier.shadow(elevation = 10.dp, shape = shape) else Modifier)
+            .background(theme.paper, shape)
+            .drawBehind { drawScanlines(theme) }
+            .padding(horizontal = 18.dp, vertical = edge + 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = "TOKENS",
-            color = ReceiptInk,
+            text = theme.brand,
+            color = theme.ink,
             fontSize = 15.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = ReceiptFont,
-            letterSpacing = 5.sp,
+            letterSpacing = theme.brandLetterSpacing,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "AI 用量小票",
-            color = ReceiptInkSoft,
+            text = text.subtitle,
+            color = theme.inkSoft,
             fontSize = 11.sp,
             fontFamily = ReceiptFont,
             textAlign = TextAlign.Center,
@@ -102,8 +97,8 @@ fun ReceiptCard(data: ReceiptData, formats: NumberFormats, modifier: Modifier = 
         )
         Spacer(Modifier.height(10.dp))
         Text(
-            text = "— ${data.title} —",
-            color = ReceiptInk,
+            text = "— ${text.title(data.range)} —",
+            color = theme.ink,
             fontSize = 12.sp,
             fontFamily = ReceiptFont,
             textAlign = TextAlign.Center,
@@ -111,26 +106,26 @@ fun ReceiptCard(data: ReceiptData, formats: NumberFormats, modifier: Modifier = 
         )
         Spacer(Modifier.height(12.dp))
 
-        DashedRule()
+        ReceiptRule(theme)
         Spacer(Modifier.height(8.dp))
-        ReceiptRow("DATE", printed)
-        ReceiptRow("NO.", data.number)
-        Spacer(Modifier.height(8.dp))
-
-        DashedRule()
-        Spacer(Modifier.height(8.dp))
-        ReceiptRow("输入", formats.tokens(data.input))
-        ReceiptRow("输出", formats.tokens(data.output))
-        ReceiptRow("缓存读取", formats.tokens(data.cacheRead))
-        ReceiptRow("缓存写入", formats.tokens(data.cacheWrite))
-        ReceiptRow("推理", formats.tokens(data.reasoning))
+        ReceiptRow(text.dateLabel, printed, theme)
+        ReceiptRow(text.numberLabel, data.number, theme)
         Spacer(Modifier.height(8.dp))
 
-        DashedRule()
+        ReceiptRule(theme)
+        Spacer(Modifier.height(8.dp))
+        ReceiptRow(text.input, formats.tokens(data.input), theme)
+        ReceiptRow(text.output, formats.tokens(data.output), theme)
+        ReceiptRow(text.cacheRead, formats.tokens(data.cacheRead), theme)
+        ReceiptRow(text.cacheWrite, formats.tokens(data.cacheWrite), theme)
+        ReceiptRow(text.reasoning, formats.tokens(data.reasoning), theme)
+        Spacer(Modifier.height(8.dp))
+
+        ReceiptRule(theme)
         Spacer(Modifier.height(12.dp))
         Text(
-            text = "TOTAL TOKEN",
-            color = ReceiptInkSoft,
+            text = text.total,
+            color = theme.inkSoft,
             fontSize = 11.sp,
             fontFamily = ReceiptFont,
             letterSpacing = 2.sp,
@@ -140,7 +135,7 @@ fun ReceiptCard(data: ReceiptData, formats: NumberFormats, modifier: Modifier = 
         Spacer(Modifier.height(4.dp))
         Text(
             text = formats.tokens(data.totalTokens),
-            color = ReceiptInk,
+            color = theme.ink,
             fontSize = 30.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = ReceiptFont,
@@ -149,37 +144,37 @@ fun ReceiptCard(data: ReceiptData, formats: NumberFormats, modifier: Modifier = 
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))
-        ReceiptRow("COST", formats.money(data.costUsd), bold = true, valueSize = 13.sp)
+        ReceiptRow(text.cost, formats.money(data.costUsd), theme, bold = true, valueSize = 13.sp)
         Spacer(Modifier.height(12.dp))
 
         // 没有工具行时不留空标题 + 空分隔线。
         if (data.tools.isNotEmpty()) {
-            DashedRule()
+            ReceiptRule(theme)
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "TOOLS",
-                color = ReceiptInkSoft,
+                text = text.tools,
+                color = theme.inkSoft,
                 fontSize = 11.sp,
                 fontFamily = ReceiptFont,
                 letterSpacing = 2.sp,
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(4.dp))
-            data.tools.forEach { tool -> ReceiptRow(tool.name, formats.tokens(tool.tokens)) }
+            data.tools.forEach { tool -> ReceiptRow(tool.name, formats.tokens(tool.tokens), theme) }
             Spacer(Modifier.height(8.dp))
-            DashedRule()
+            ReceiptRule(theme)
             Spacer(Modifier.height(8.dp))
         }
 
-        ReceiptRow("活跃时长", Fmt.duration(data.activeSeconds))
-        ReceiptRow("会话数", data.sessions.toString())
-        ReceiptRow("消息数", data.messages.toString())
+        ReceiptRow(text.active, text.duration(data.activeSeconds), theme)
+        ReceiptRow(text.sessions, data.sessions.toString(), theme)
+        ReceiptRow(text.messages, data.messages.toString(), theme)
 
         if (data.stale) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "数据来自缓存 · 更新于 ${Fmt.clock(data.dataFetchedAt)}",
-                color = ReceiptInkSoft,
+                text = text.stale(Fmt.clock(data.dataFetchedAt)),
+                color = theme.inkSoft,
                 fontSize = 11.sp,
                 fontFamily = ReceiptFont,
                 textAlign = TextAlign.Center,
@@ -188,21 +183,23 @@ fun ReceiptCard(data: ReceiptData, formats: NumberFormats, modifier: Modifier = 
         }
 
         Spacer(Modifier.height(14.dp))
-        Barcode(bars, Modifier.fillMaxWidth().height(44.dp))
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = data.number,
-            color = ReceiptInkSoft,
-            fontSize = 11.sp,
-            fontFamily = ReceiptFont,
-            letterSpacing = 1.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        Barcode(bars, theme, Modifier.fillMaxWidth().height(44.dp))
+        if (theme.showBarcodeText) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = data.number,
+                color = theme.inkSoft,
+                fontSize = 11.sp,
+                fontFamily = ReceiptFont,
+                letterSpacing = 1.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Spacer(Modifier.height(14.dp))
         Text(
-            text = "THANK YOU",
-            color = ReceiptInk,
+            text = text.thankYou,
+            color = theme.ink,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = ReceiptFont,
@@ -213,7 +210,7 @@ fun ReceiptCard(data: ReceiptData, formats: NumberFormats, modifier: Modifier = 
         Spacer(Modifier.height(4.dp))
         Text(
             text = "vibecafe.ai",
-            color = ReceiptInkSoft,
+            color = theme.inkSoft,
             fontSize = 11.sp,
             fontFamily = ReceiptFont,
             textAlign = TextAlign.Center,
@@ -227,6 +224,7 @@ fun ReceiptCard(data: ReceiptData, formats: NumberFormats, modifier: Modifier = 
 private fun ReceiptRow(
     label: String,
     value: String,
+    theme: ReceiptTheme,
     bold: Boolean = false,
     valueSize: TextUnit = 12.sp,
 ) {
@@ -236,7 +234,7 @@ private fun ReceiptRow(
     ) {
         Text(
             text = label,
-            color = ReceiptInkSoft,
+            color = theme.inkSoft,
             fontSize = 12.sp,
             fontFamily = ReceiptFont,
             maxLines = 1,
@@ -253,14 +251,14 @@ private fun ReceiptRow(
                     val y = size.height / 2f
                     var x = radius
                     while (x + radius <= size.width) {
-                        drawCircle(color = ReceiptInkFaint, radius = radius, center = Offset(x, y))
+                        drawCircle(color = theme.inkFaint, radius = radius, center = Offset(x, y))
                         x += step
                     }
                 },
         )
         Text(
             text = value,
-            color = ReceiptInk,
+            color = theme.ink,
             fontSize = valueSize,
             fontFamily = ReceiptFont,
             fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
@@ -270,24 +268,50 @@ private fun ReceiptRow(
     }
 }
 
-/** 热敏纸上的虚线分隔。 */
+/** 分隔线：极简样式是实线，其余样式是虚线。 */
 @Composable
-private fun DashedRule(modifier: Modifier = Modifier) {
+private fun ReceiptRule(theme: ReceiptTheme, modifier: Modifier = Modifier) {
     Canvas(modifier.fillMaxWidth().height(2.dp)) {
         val y = size.height / 2f
         drawLine(
-            color = ReceiptInkFaint,
+            color = theme.rule,
             start = Offset(0f, y),
             end = Offset(size.width, y),
             strokeWidth = 1.dp.toPx(),
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()), 0f),
+            pathEffect = if (theme.dashedRules) {
+                PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()), 0f)
+            } else {
+                null
+            },
         )
+    }
+}
+
+/** 终端风的极淡扫描线：只在这一种纸上有，透明度 0.04，不能抢正文。 */
+private fun DrawScope.drawScanlines(theme: ReceiptTheme) {
+    if (theme.scanlineAlpha <= 0f) return
+    val radius = theme.cornerRadius.toPx().coerceAtMost(minOf(size.width, size.height) / 4f)
+    val paper = Path().apply {
+        addRoundRect(RoundRect(0f, 0f, size.width, size.height, CornerRadius(radius)))
+    }
+    clipPath(paper) {
+        val step = 3.dp.toPx()
+        val line = 1.dp.toPx()
+        var y = 0f
+        while (y < size.height) {
+            drawRect(
+                color = theme.ink.copy(alpha = theme.scanlineAlpha),
+                topLeft = Offset(0f, y),
+                size = Size(size.width, line),
+            )
+            y += step
+        }
     }
 }
 
 /** 装饰用条码：只由单号决定，同样的单号永远印出同样的条纹。 */
 @Composable
-private fun Barcode(bars: List<Int>, modifier: Modifier = Modifier) {
+private fun Barcode(bars: List<Int>, theme: ReceiptTheme, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         val total = bars.sumOf { abs(it) }
         if (total <= 0) return@Canvas
@@ -296,7 +320,7 @@ private fun Barcode(bars: List<Int>, modifier: Modifier = Modifier) {
         bars.forEach { bar ->
             val barWidth = abs(bar) * unitWidth
             if (bar > 0) {
-                drawRect(color = ReceiptInk, topLeft = Offset(x, 0f), size = Size(barWidth, size.height))
+                drawRect(color = theme.ink, topLeft = Offset(x, 0f), size = Size(barWidth, size.height))
             }
             x += barWidth
         }
@@ -328,38 +352,6 @@ private fun barcodeBars(seed: String): List<Int> {
     return bars
 }
 
-private val StampFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
-
-private fun printedStamp(millis: Long): String =
-    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(StampFormat)
-
-/**
- * 纸的轮廓：上下各一排三角齿（6dp），左右两侧直边。
- * 齿宽按卡片宽度均分，最后一个齿正好落在右边缘上。
- */
-private class TornPaperShape(private val tooth: Dp, private val pitch: Dp) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val t = with(density) { tooth.toPx() }.coerceAtMost(size.height / 4f)
-        val pitchPx = with(density) { pitch.toPx() }.coerceAtLeast(1f)
-        val count = ceil(size.width / pitchPx).toInt().coerceAtLeast(1)
-        val step = size.width / count
-
-        val path = Path()
-        path.moveTo(0f, t)
-        for (i in 1..count) {
-            path.lineTo(i * step, if (i % 2 == 0) t else 0f)
-        }
-        path.lineTo(size.width, t)
-        path.lineTo(size.width, size.height - t)
-        for (i in 1..count) {
-            path.lineTo(size.width - i * step, if (i % 2 == 0) size.height - t else size.height)
-        }
-        path.lineTo(0f, size.height - t)
-        path.close()
-        return Outline.Generic(path)
-    }
-}
-
 /** 预览样例（7 天口径，各项数字自洽）。 */
 private val SampleReceipt = ReceiptData(
     range = Range.D7,
@@ -388,8 +380,65 @@ private val SampleReceipt = ReceiptData(
 
 @Preview(showBackground = true, backgroundColor = 0xFF101214, widthDp = 340, heightDp = 1000)
 @Composable
-private fun ReceiptCardPreview() {
+private fun ReceiptCardClassicPreview() {
     Box(Modifier.padding(16.dp)) {
-        ReceiptCard(data = SampleReceipt, formats = NumberFormats.DEFAULT)
+        ReceiptCard(
+            data = SampleReceipt,
+            formats = NumberFormats.DEFAULT,
+            style = ReceiptStyle.CLASSIC,
+            language = ReceiptLanguage.MIXED,
+        )
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFF6F6F7, widthDp = 340, heightDp = 1000)
+@Composable
+private fun ReceiptCardMinimalPreview() {
+    Box(Modifier.padding(16.dp)) {
+        ReceiptCard(
+            data = SampleReceipt,
+            formats = NumberFormats.DEFAULT,
+            style = ReceiptStyle.MINIMAL,
+            language = ReceiptLanguage.EN,
+        )
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF101214, widthDp = 340, heightDp = 1000)
+@Composable
+private fun ReceiptCardNightPreview() {
+    Box(Modifier.padding(16.dp)) {
+        ReceiptCard(
+            data = SampleReceipt,
+            formats = NumberFormats.DEFAULT,
+            style = ReceiptStyle.NIGHT,
+            language = ReceiptLanguage.ZH,
+        )
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFFF6F6F7, widthDp = 340, heightDp = 1000)
+@Composable
+private fun ReceiptCardKraftPreview() {
+    Box(Modifier.padding(16.dp)) {
+        ReceiptCard(
+            data = SampleReceipt,
+            formats = NumberFormats.DEFAULT,
+            style = ReceiptStyle.KRAFT,
+            language = ReceiptLanguage.ZH,
+        )
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF101214, widthDp = 340, heightDp = 1000)
+@Composable
+private fun ReceiptCardTerminalPreview() {
+    Box(Modifier.padding(16.dp)) {
+        ReceiptCard(
+            data = SampleReceipt,
+            formats = NumberFormats.DEFAULT,
+            style = ReceiptStyle.TERMINAL,
+            language = ReceiptLanguage.EN,
+        )
     }
 }

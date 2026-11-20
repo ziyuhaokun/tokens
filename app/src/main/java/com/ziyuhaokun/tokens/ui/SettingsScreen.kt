@@ -3,6 +3,7 @@ package com.ziyuhaokun.tokens.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +27,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.focus.onFocusChanged
@@ -58,6 +62,8 @@ import com.ziyuhaokun.tokens.data.AccentChoice
 import com.ziyuhaokun.tokens.data.CNY_RATE_RANGE
 import com.ziyuhaokun.tokens.data.CurrencyChoice
 import com.ziyuhaokun.tokens.data.DEFAULT_CNY_PER_USD
+import com.ziyuhaokun.tokens.data.ReceiptLanguage
+import com.ziyuhaokun.tokens.data.ReceiptStyle
 import com.ziyuhaokun.tokens.data.UnitStyle
 import com.ziyuhaokun.tokens.data.FontScaleChoice
 import com.ziyuhaokun.tokens.data.StoredSettings
@@ -83,6 +89,10 @@ fun SettingsScreen(
     onCurrency: (CurrencyChoice) -> Unit,
     onCnyPerUsd: (Double) -> Unit,
     onUnits: (UnitStyle) -> Unit,
+    onReceiptStyle: (ReceiptStyle) -> Unit,
+    onReceiptLanguage: (ReceiptLanguage) -> Unit,
+    /** 按当前样式 / 语言打一张小票看看。 */
+    onPreviewReceipt: () -> Unit,
     onSaveCredentials: (String, String) -> Unit,
     onDismissCredentials: () -> Unit,
     onSignOut: () -> Unit,
@@ -212,6 +222,44 @@ fun SettingsScreen(
                 fontSize = TokensType.Caption,
                 lineHeight = TokensType.Caption * 1.45f,
             )
+        }
+
+        Spacer(Modifier.height(TokensSpace.CardGap))
+
+        // 小票：纸张样式 + 文字语言；货币 / 单位跟「数字显示」走。
+        val receiptStyle = settings?.receiptStyle ?: ReceiptStyle.CLASSIC
+        SettingsGroup("小票") {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SettingsRowLabel("样式", Modifier.weight(1f))
+                Text(receiptStyle.label, color = Palette.Dim, fontSize = TokensType.Caption)
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                ReceiptStyle.entries.forEach { style ->
+                    ReceiptStyleSwatch(
+                        style = style,
+                        selected = style == receiptStyle,
+                        onClick = { if (style != receiptStyle) onReceiptStyle(style) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            HairlineDivider()
+            SettingsRow("语言") {
+                SegmentedRow(
+                    options = ReceiptLanguage.entries.map { it to it.label },
+                    selected = settings?.receiptLanguage ?: ReceiptLanguage.MIXED,
+                    onSelect = onReceiptLanguage,
+                )
+            }
+            HairlineDivider()
+            ActionRow("预览小票") { onPreviewReceipt() }
         }
 
         Spacer(Modifier.height(TokensSpace.CardGap))
@@ -398,7 +446,12 @@ private fun <T> SegmentedRow(
  */
 @Composable
 private fun RateField(rate: Double, onCommit: (Double) -> Unit) {
-    var text by remember(rate) { mutableStateOf(formatRate(rate)) }
+    val state = rememberTextFieldState(formatRate(rate))
+    // 外部改了汇率（例如另一处保存）时同步到输入框；正在输入的同值不打断。
+    LaunchedEffect(rate) {
+        if (state.text.toString().toDoubleOrNull() != rate) state.setTextAndPlaceCursorAtEnd(formatRate(rate))
+    }
+    val text = state.text.toString()
     val parsed = text.toDoubleOrNull()
     val valid = parsed != null && parsed in CNY_RATE_RANGE
     val focus = LocalFocusManager.current
@@ -410,9 +463,12 @@ private fun RateField(rate: Double, onCommit: (Double) -> Unit) {
         Text("1 USD =", color = Palette.Dim, fontSize = TokensType.Label, fontFamily = NumericFont)
         Spacer(Modifier.width(8.dp))
         BasicTextField(
-            value = text,
-            onValueChange = { input -> text = input.filter { it.isDigit() || it == '.' }.take(7) },
-            singleLine = true,
+            state = state,
+            // 只收数字和小数点，最多 7 个字符。
+            inputTransformation = InputTransformation {
+                if (length > 7 || !asCharSequence().all { it.isDigit() || it == '.' }) revertAllChanges()
+            },
+            lineLimits = TextFieldLineLimits.SingleLine,
             textStyle = TextStyle(
                 color = if (valid) Palette.Text else Palette.Warn,
                 fontSize = TokensType.Value,
@@ -420,10 +476,10 @@ private fun RateField(rate: Double, onCommit: (Double) -> Unit) {
                 textAlign = TextAlign.End,
             ),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(onDone = {
+            onKeyboardAction = {
                 commit()
                 focus.clearFocus()
-            }),
+            },
             cursorBrush = SolidColor(Palette.Text),
             modifier = Modifier
                 .width(84.dp)
