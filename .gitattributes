@@ -1,0 +1,14 @@
+* text=auto
+
+# POSIX shell script must stay LF, or it breaks on macOS/Linux checkouts
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Windows scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary
+*.jar binary
+*.apk binary
+*.png binary
