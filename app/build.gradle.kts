@@ -12,8 +12,8 @@ android {
         applicationId = "com.ziyuhaokun.tokens"
         minSdk = 26
         targetSdk = 37
-        versionCode = 10
-        versionName = "0.9.0"
+        versionCode = 11
+        versionName = "0.9.1"
     }
 
     buildFeatures {

@@ -70,6 +70,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.stringResource
@@ -106,6 +109,8 @@ fun SettingsScreen(
     versionName: String,
     onBack: () -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
+    /** 和 [onThemeMode] 同一个动作，额外带上点击的屏幕坐标。 */
+    onThemeModeAt: (ThemeMode, Offset) -> Unit,
     onAccent: (AccentChoice) -> Unit,
     onFontScale: (FontScaleChoice) -> Unit,
     onMotion: (Boolean) -> Unit,
@@ -154,6 +159,8 @@ fun SettingsScreen(
                     options = ThemeMode.entries.map { it to it.label },
                     selected = settings?.themeMode ?: ThemeMode.SYSTEM,
                     onSelect = onThemeMode,
+                    // 指尖位置：主题切换的圆形揭开从这个点开始。
+                    onSelectAt = onThemeModeAt,
                 )
             }
             HairlineDivider()
@@ -555,11 +562,14 @@ private fun <T> SegmentedRow(
     options: List<Pair<T, String>>,
     selected: T,
     onSelect: (T) -> Unit,
+    /** 需要知道「从哪儿点的」时传入（主题切换的圆形揭开用）。 */
+    onSelectAt: ((T, Offset) -> Unit)? = null,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         options.forEach { (value, label) ->
             val isOn = value == selected
             val shape = RoundedCornerShape(9.dp)
+            var center by remember { mutableStateOf(Offset.Zero) }
             Box(
                 modifier = Modifier
                     .heightIn(min = 36.dp)
@@ -570,8 +580,16 @@ private fun <T> SegmentedRow(
                         color = if (isOn) Palette.Accent.copy(alpha = 0.55f) else Color.Transparent,
                         shape = shape,
                     )
+                    .onGloballyPositioned { coords ->
+                        val topLeft = coords.positionInWindow()
+                        center = topLeft + Offset(coords.size.width / 2f, coords.size.height / 2f)
+                    }
                     .semantics { this.selected = isOn }
-                    .clickable(role = Role.Tab) { if (!isOn) onSelect(value) }
+                    .clickable(role = Role.Tab) {
+                        if (isOn) return@clickable
+                        // 有「带位置」的回调就只走它，避免同一个动作触发两次。
+                        if (onSelectAt != null) onSelectAt(value, center) else onSelect(value)
+                    }
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center,
             ) {

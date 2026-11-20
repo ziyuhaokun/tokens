@@ -9,6 +9,20 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -38,6 +52,7 @@ import com.ziyuhaokun.tokens.data.ReceiptStyle
 import com.ziyuhaokun.tokens.data.Usage
 import com.ziyuhaokun.tokens.data.ThemeMode
 import kotlinx.coroutines.CancellationException
+import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -53,8 +68,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            val scope = rememberCoroutineScope()
+            // 提到最外层：录制层要知道设置页是否打开，小票 / 浮层也都从这里读。
+            var showSettings by rememberSaveable { mutableStateOf(false) }
             val stored by container.repository.settings.collectAsStateWithLifecycle(initialValue = null)
-            val themeMode = stored?.themeMode ?: ThemeMode.SYSTEM
+            // 主题切换自己留一份即时值：点下去立刻换配色，不等 DataStore 往返。
+            var themeOverride by remember { mutableStateOf<ThemeMode?>(null) }
+            val themeMode = themeOverride ?: stored?.themeMode ?: ThemeMode.SYSTEM
             val dark = when (themeMode) {
                 ThemeMode.DARK -> true
                 ThemeMode.LIGHT -> false
@@ -62,10 +82,93 @@ class MainActivity : ComponentActivity() {
             }
             // 系统栏图标必须跟着 App 自己的深浅色走，不能跟系统主题走。
             LaunchedEffect(dark) { applySystemBars(dark) }
+            // 设置流写回来之后才丢掉即时值，避免新旧主题闪一帧。
+            LaunchedEffect(stored?.themeMode) {
+                if (themeOverride != null && stored?.themeMode == themeOverride) themeOverride = null
+            }
 
             // 货币 / token 单位：整个界面通过 LocalNumberFormats 读取。
             val numberFormats = stored?.numberFormats ?: NumberFormats.DEFAULT
+
+            // 主题切换的圆形揭开：先把当前画面录进一层，换主题后让旧画面从圆外保留、
+            // 新主题从触点向外长出。半径只在绘制阶段读，不会重组。
+            val captureLayer = rememberGraphicsLayer()
+            var snapshot by remember { mutableStateOf<ImageBitmap?>(null) }
+            var revealCenter by remember { mutableStateOf(Offset.Zero) }
+            var canvasSize by remember { mutableStateOf(IntSize.Zero) }
+            var boxTopLeft by remember { mutableStateOf(Offset.Zero) }
+            val revealRadius = remember { Animatable(0f) }
+
+            fun switchTheme(mode: ThemeMode, at: Offset?) {
+                // 动画没放完之前不接第二次点击，免得互相打断。
+                if (snapshot != null) return
+                val motion = stored?.motion ?: true
+                if (!motion) {
+                    scope.launch { container.repository.saveThemeMode(mode) }
+                    return
+                }
+                scope.launch {
+                    // 顺序很关键：先把旧画面盖上去（和屏幕上此刻完全一样，看不出变化），
+                    // 再换配色——否则「换主题」的那一帧会直接露出新配色，就是那下闪屏。
+                    val shot = if (canvasSize != IntSize.Zero) {
+                        runCatching { captureLayer.toImageBitmap() }.getOrNull()
+                    } else {
+                        null
+                    }
+                    if (shot != null) {
+                        revealCenter = (at ?: Offset(canvasSize.width / 2f, canvasSize.height / 2f)) - boxTopLeft
+                        revealRadius.snapTo(0f)
+                        snapshot = shot
+                        // 等这一帧画完（盖住旧画面）再动主题。
+                        withFrameNanos { }
+                    }
+                    themeOverride = mode
+                    container.repository.saveThemeMode(mode)
+                    if (shot != null) {
+                        revealRadius.animateTo(
+                            targetValue = farthestCornerDistance(revealCenter, canvasSize),
+                            animationSpec = tween(durationMillis = 680, easing = FastOutSlowInEasing),
+                        )
+                        snapshot = null
+                    }
+                }
+            }
+
             CompositionLocalProvider(LocalNumberFormats provides numberFormats) {
+                // 整屏录一层：切主题的瞬间取上一帧当「旧画面」，圆外继续显示它、圆内已经是新主题。
+                // 只在设置页打开时录制（那时才可能切主题），平时不额外占绘制开销。
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .onGloballyPositioned { coords ->
+                            canvasSize = coords.size
+                            boxTopLeft = coords.positionInWindow()
+                        }
+                        .drawWithContent {
+                            if (showSettings && snapshot == null) {
+                                captureLayer.record { this@drawWithContent.drawContent() }
+                                drawLayer(captureLayer)
+                            } else {
+                                drawContent()
+                            }
+                            snapshot?.let { old ->
+                                val radius = revealRadius.value
+                                if (radius > 0f) {
+                                    val hole = Path().apply {
+                                        addOval(Rect(center = revealCenter, radius = radius))
+                                    }
+                                    clipPath(hole, clipOp = ClipOp.Difference) {
+                                        drawImage(
+                                            image = old,
+                                            dstSize = IntSize(size.width.toInt(), size.height.toInt()),
+                                        )
+                                    }
+                                } else {
+                                    drawImage(old, dstSize = IntSize(size.width.toInt(), size.height.toInt()))
+                                }
+                            }
+                        },
+                ) {
                 TokensTheme(
                     themeMode = themeMode,
                     accent = stored?.accent ?: AccentChoice.MONO,
@@ -75,7 +178,6 @@ class MainActivity : ComponentActivity() {
                     val state by viewModel.state.collectAsStateWithLifecycle()
                     val heatmapState by heatmap.state.collectAsStateWithLifecycle()
                     var tab by rememberSaveable { mutableStateOf(AppTab.OVERVIEW) }
-                    var showSettings by rememberSaveable { mutableStateOf(false) }
 
                     // 正在展示的小票；null = 没打开。按下那一刻的数据定格，之后刷新不改它。
                     // 放在最外层：首页「打印小票」和设置页「预览小票」共用。
@@ -85,7 +187,6 @@ class MainActivity : ComponentActivity() {
                         val usage = state.usage ?: Usage.EMPTY
                         receipt = ReceiptBuilder.build(usage, state.range, state.fetchedAt, state.stale)
                     }
-                    val scope = rememberCoroutineScope()
                     val motion = stored?.motion ?: true
                     val versionName = remember {
                         runCatching { packageManager.getPackageInfo(packageName, 0).versionName }
@@ -161,7 +262,8 @@ class MainActivity : ComponentActivity() {
                                                 settings = stored,
                                                 versionName = versionName,
                                                 onBack = ::closeSettings,
-                                                onThemeMode = { scope.launch { container.repository.saveThemeMode(it) } },
+                                                onThemeMode = { mode -> switchTheme(mode, at = null) },
+                                                onThemeModeAt = { mode, at -> switchTheme(mode, at) },
                                                 onAccent = { scope.launch { container.repository.saveAccent(it) } },
                                                 onFontScale = { scope.launch { container.repository.saveFontScale(it) } },
                                                 onMotion = { scope.launch { container.repository.saveMotion(it) } },
@@ -200,6 +302,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                }
                 }
             }
         }

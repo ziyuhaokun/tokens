@@ -1,5 +1,8 @@
 package com.ziyuhaokun.tokens.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -185,6 +188,7 @@ fun TokensTheme(
     }
     val base = if (dark) DarkTokensColors else LightTokensColors
     val colors = base.copy(accent = accentColor(accent, dark))
+
 
     val scheme = if (dark) {
         darkColorScheme(
