@@ -1,5 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Tokens</string>
-    <string name="widget_label">Tokens 用量</string>
+    <!-- 小部件名称按小米规范「应用名称·小部件名称」，2~10 个汉字。 -->
+    <string name="widget_label">Tokens·用量概览</string>
+    <string name="widget_label_small">Tokens·今日费用</string>
+    <string name="widget_label_large">Tokens·用量趋势</string>
+    <!-- 介绍不超过 22 个中文字符。 -->
+    <string name="widget_desc_small">今日费用与近 7 天走势</string>
+    <string name="widget_desc_medium">今日与 7 天费用、tokens 和走势</string>
+    <string name="widget_desc_large">7 天走势与按工具的费用排行</string>
+    <string name="widget_loading">加载中…</string>
+    <string name="widget_preview_samples">示例预览</string>
+    <string name="widget_preview_add">添加到桌面</string>
+    <string name="widget_pin_requesting">正在向桌面发送添加请求…</string>
+    <string name="widget_pin_requested">已向桌面发送请求。如果没有弹出确认，当前桌面可能限制了应用内添加，可手动添加。</string>
+    <string name="widget_pin_unavailable">当前桌面不允许从 App 内添加，请手动添加。</string>
+    <string name="widget_pin_manual">长按桌面空白处 → 添加小部件 → 安卓小组件 → Tokens。</string>
+    <string name="widget_pin_permission_help">在系统应用信息的「其他权限」里，将「桌面快捷方式」设为允许，再试一次。</string>
+    <string name="widget_pin_open_app_info">打开系统应用信息</string>
 </resources>

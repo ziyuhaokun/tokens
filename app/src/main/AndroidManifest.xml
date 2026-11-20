@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- HyperOS 检查桌面快捷方式权限，再处理应用内的小组件添加请求。 -->
+    <uses-permission android:name="com.android.launcher.permission.INSTALL_SHORTCUT" />
     <!-- Android 9 及以下把图片写进公共 Pictures 目录需要它；10+ 走 MediaStore，不需要。 -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -19,12 +21,30 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          桌面小组件：三个尺寸各一个 receiver，小米的小部件列表里会分别显示。
+          内容都由同一个 UsageWidget 按实际尺寸自适应。
+          4x2 沿用原来的类名，已经放在桌面上的小组件升级后不会失效。
+        -->
+        <receiver
+            android:name=".widget.UsageWidgetSmallReceiver"
+            android:exported="true"
+            android:label="@string/widget_label_small">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/usage_widget_small_info" />
+        </receiver>
 
         <receiver
             android:name=".widget.UsageWidgetReceiver"
@@ -36,6 +56,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/usage_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.UsageWidgetLargeReceiver"
+            android:exported="true"
+            android:label="@string/widget_label_large">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/usage_widget_large_info" />
         </receiver>
 
         <!-- 小票分享：把 cacheDir/receipts 下的 PNG 以 content:// 递给别的 App。 -->

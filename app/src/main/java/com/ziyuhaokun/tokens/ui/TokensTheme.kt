@@ -122,7 +122,7 @@ object TokensType {
 /** 间距与圆角。 */
 object TokensSpace {
     val Page = 16.dp
-    val CardGap = 14.dp
+    val CardGap = 12.dp
     val CardPadding = 20.dp
     val CardPaddingCompact = 16.dp
     val CardRadius = 24.dp

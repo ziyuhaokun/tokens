@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -71,10 +75,13 @@ fun ScreenScaffold(
         isRefreshing = refreshing,
         onRefresh = onRefresh,
         state = state,
+        // 只让顶部和左右避开系统栏；底部让内容穿到手势条下面，才叫沉浸式。
         modifier = Modifier
             .fillMaxSize()
             .background(Palette.Bg)
-            .windowInsetsPadding(WindowInsets.safeDrawing),
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+            ),
         indicator = {
             PullToRefreshDefaults.Indicator(
                 state = state,
@@ -89,7 +96,9 @@ fun ScreenScaffold(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = TokensSpace.Page),
+                .padding(horizontal = TokensSpace.Page)
+                // 末尾留出手势条的高度，滑到底时最后一张卡片不会被小白条盖住。
+                .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 8.dp),
             content = content,
         )
     }
@@ -394,7 +403,7 @@ fun RankingRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 11.dp),
+                .padding(vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(

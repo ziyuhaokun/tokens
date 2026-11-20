@@ -1,6 +1,17 @@
 package com.ziyuhaokun.tokens.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import android.view.LayoutInflater
+import android.view.View
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -11,6 +22,10 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +35,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +52,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -46,18 +64,25 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ziyuhaokun.tokens.R
 import com.ziyuhaokun.tokens.data.AccentChoice
 import com.ziyuhaokun.tokens.data.CNY_RATE_RANGE
 import com.ziyuhaokun.tokens.data.CurrencyChoice
@@ -65,9 +90,11 @@ import com.ziyuhaokun.tokens.data.DEFAULT_CNY_PER_USD
 import com.ziyuhaokun.tokens.data.ReceiptLanguage
 import com.ziyuhaokun.tokens.data.ReceiptStyle
 import com.ziyuhaokun.tokens.data.UnitStyle
+import com.ziyuhaokun.tokens.widget.WidgetSize
 import com.ziyuhaokun.tokens.data.FontScaleChoice
 import com.ziyuhaokun.tokens.data.StoredSettings
 import com.ziyuhaokun.tokens.data.ThemeMode
+import kotlinx.coroutines.launch
 
 /**
  * 设置独立成页：左边标签、右边控件，一屏能看全。
@@ -77,10 +104,6 @@ import com.ziyuhaokun.tokens.data.ThemeMode
 fun SettingsScreen(
     settings: StoredSettings?,
     versionName: String,
-    saving: Boolean,
-    saveError: String?,
-    /** 每保存成功一次 +1；变了就收起表单。 */
-    saveCount: Int,
     onBack: () -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
     onAccent: (AccentChoice) -> Unit,
@@ -93,28 +116,23 @@ fun SettingsScreen(
     onReceiptLanguage: (ReceiptLanguage) -> Unit,
     /** 按当前样式 / 语言打一张小票看看。 */
     onPreviewReceipt: () -> Unit,
-    onSaveCredentials: (String, String) -> Unit,
-    onDismissCredentials: () -> Unit,
+    /** 桌面支持从 App 里直接添加小组件时为 true。 */
+    canPinWidget: Boolean,
+    onPinWidget: suspend (WidgetSize) -> Boolean,
     onSignOut: () -> Unit,
     onClearCache: () -> Unit,
-    onRefreshAll: () -> Unit,
 ) {
-    var showCredentials by remember { mutableStateOf(false) }
     var cleared by remember { mutableStateOf(false) }
-
-    // 只在验证通过后收起表单；失败时表单留着，错误就显示在里面。
-    val initialSaveCount = remember { saveCount }
-    LaunchedEffect(saveCount) {
-        if (saveCount != initialSaveCount) showCredentials = false
-    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Palette.Bg)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            // 底部不避让：内容穿到手势条下面；末尾再补出手势条高度的留白。
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = TokensSpace.Page),
+            .padding(horizontal = TokensSpace.Page)
+            .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 8.dp),
     ) {
         Spacer(Modifier.height(8.dp))
 
@@ -126,13 +144,6 @@ fun SettingsScreen(
         )
         Spacer(Modifier.height(6.dp))
         Text("设置", color = Palette.Text, fontSize = TokensType.Title, fontWeight = FontWeight.Light)
-        Text(
-            text = settings?.apiKey?.let { "API Key 已配置 · ${maskKey(it)}" } ?: "未配置 API Key",
-            color = Palette.Dim,
-            fontSize = TokensType.Caption,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
 
         Spacer(Modifier.height(TokensSpace.CardGap))
 
@@ -264,6 +275,10 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(TokensSpace.CardGap))
 
+        WidgetSettingsGroup(canPinWidget, onPinWidget)
+
+        Spacer(Modifier.height(TokensSpace.CardGap))
+
         // 数据
         SettingsGroup("数据") {
             SettingsRow("服务器") {
@@ -287,27 +302,6 @@ fun SettingsScreen(
                 )
             }
             HairlineDivider()
-            ActionRow("更新 Key 或服务器地址") {
-                if (showCredentials) onDismissCredentials()
-                showCredentials = !showCredentials
-            }
-            if (showCredentials) {
-                Spacer(Modifier.height(10.dp))
-                CredentialsForm(
-                    initialKey = "",
-                    initialUrl = settings?.baseUrl ?: "https://vibecafe.ai",
-                    saving = saving,
-                    error = saveError,
-                    saveLabel = "验证并保存",
-                    allowBlankKey = true,
-                    onSave = onSaveCredentials,
-                    onCancel = {
-                        showCredentials = false
-                        onDismissCredentials()
-                    },
-                )
-            }
-            HairlineDivider()
             ActionRow(
                 label = if (cleared) "缓存已清除" else "清除本地缓存",
                 valueColor = if (cleared) Palette.Ok else null,
@@ -316,8 +310,6 @@ fun SettingsScreen(
                 onClearCache()
                 cleared = true
             }
-            HairlineDivider()
-            ActionRow("立即刷新") { onRefreshAll() }
         }
 
         Spacer(Modifier.height(TokensSpace.CardGap))
@@ -337,6 +329,165 @@ fun SettingsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
+    }
+}
+
+@Composable
+private fun WidgetSettingsGroup(
+    canPin: Boolean,
+    onPin: suspend (WidgetSize) -> Boolean,
+) {
+    val scope = rememberCoroutineScope()
+    var requesting by remember { mutableStateOf<WidgetSize?>(null) }
+    var lastRequested by rememberSaveable { mutableStateOf<WidgetSize?>(null) }
+    var lastAccepted by rememberSaveable { mutableStateOf(false) }
+    val manualPath = stringResource(R.string.widget_pin_manual)
+
+    SettingsGroup("桌面小组件") {
+        Text(
+            text = stringResource(R.string.widget_preview_samples),
+            color = Palette.Dim,
+            fontSize = TokensType.Caption,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        WidgetSize.entries.forEachIndexed { index, size ->
+            if (index > 0) HairlineDivider()
+            WidgetPreviewRow(
+                size = size,
+                canPin = canPin,
+                enabled = requesting == null,
+            ) {
+                requesting = size
+                scope.launch {
+                    try {
+                        lastAccepted = onPin(size)
+                        lastRequested = size
+                    } finally {
+                        requesting = null
+                    }
+                }
+            }
+            if (canPin && (requesting ?: lastRequested) == size) {
+                val status = when {
+                    requesting != null -> R.string.widget_pin_requesting
+                    lastAccepted -> R.string.widget_pin_requested
+                    else -> R.string.widget_pin_unavailable
+                }
+                val requester = remember { BringIntoViewRequester() }
+                Column(
+                    modifier = Modifier
+                        .bringIntoViewRequester(requester)
+                        .padding(bottom = 8.dp),
+                ) {
+                    Text(
+                        text = stringResource(status) + "\n" + manualPath,
+                        color = if (requesting == null && !lastAccepted) Palette.Warn else Palette.Dim,
+                        fontSize = TokensType.Caption,
+                        lineHeight = TokensType.Caption * 1.45f,
+                        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                    )
+                    if (requesting == null) WidgetPinPermissionHelp()
+                }
+                LaunchedEffect(status) { requester.bringIntoView() }
+            }
+        }
+        if (!canPin || (lastRequested == null && requesting == null)) {
+            Text(
+                text = if (canPin) manualPath else stringResource(R.string.widget_pin_unavailable) + "\n" + manualPath,
+                color = Palette.Dim,
+                fontSize = TokensType.Caption,
+                lineHeight = TokensType.Caption * 1.45f,
+                modifier = Modifier.padding(top = if (canPin) 8.dp else 0.dp),
+            )
+            if (!canPin) WidgetPinPermissionHelp()
+        }
+    }
+}
+
+@Composable
+private fun WidgetPreviewRow(size: WidgetSize, canPin: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val context = LocalContext.current
+    val dark = LocalTokensColors.current.isDark
+    // 每个尺寸按真实宽高比（2×2 正方、4×2 宽矮、4×4 正方），不拉成同一个框。
+    val (layout, previewWidth, previewHeight) = when (size) {
+        WidgetSize.SMALL -> Triple(R.layout.widget_preview_small, 150, 150)
+        WidgetSize.MEDIUM -> Triple(R.layout.widget_preview_medium, 320, 150)
+        WidgetSize.LARGE -> Triple(R.layout.widget_preview_large, 320, 320)
+    }
+    val thumbHeight = 84.dp
+    val aspect = previewWidth.toFloat() / previewHeight
+    // 按原比例给框，且不超过容器宽度；用 Fit 保证四个边都不被裁。
+    val thumbWidth = minOf(176.dp, thumbHeight * aspect)
+    val image = remember(context, size, dark) {
+        // 密度必须与位图像素一致：视图按 density 把 px 换成 dp，
+        // 用 1.5 倍像素配 3 倍密度，内容只能分到一半宽度，数字就被切掉了。
+        val scale = 2
+        val config = Configuration(context.resources.configuration).apply {
+            uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                if (dark) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO
+            densityDpi = 160 * scale
+            fontScale = 1f
+        }
+        val preview = LayoutInflater.from(context.createConfigurationContext(config)).inflate(layout, null)
+        val width = previewWidth * scale
+        val height = previewHeight * scale
+        preview.measure(
+            View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY),
+        )
+        preview.layout(0, 0, width, height)
+        Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { bitmap ->
+            preview.draw(android.graphics.Canvas(bitmap))
+        }.asImageBitmap()
+    }
+    val action = if (canPin) {
+        Modifier.clickable(
+            enabled = enabled,
+            onClickLabel = stringResource(R.string.widget_preview_add),
+            role = Role.Button,
+            onClick = onClick,
+        )
+    } else Modifier
+
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).then(action).padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            bitmap = image,
+            contentDescription = null,
+            modifier = Modifier.size(width = thumbWidth, height = thumbHeight).clip(RoundedCornerShape(10.dp)),
+            contentScale = ContentScale.Fit,
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(size.label, color = Palette.TextSoft, fontSize = TokensType.Body)
+            if (canPin) {
+                Text(stringResource(R.string.widget_preview_add), color = Palette.Dim, fontSize = TokensType.Caption)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WidgetPinPermissionHelp() {
+    if (!Build.MANUFACTURER.equals("Xiaomi", ignoreCase = true)) return
+
+    val context = LocalContext.current
+    Text(
+        text = stringResource(R.string.widget_pin_permission_help),
+        color = Palette.Dim,
+        fontSize = TokensType.Caption,
+        lineHeight = TokensType.Caption * 1.45f,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    ActionRow(stringResource(R.string.widget_pin_open_app_info)) {
+        val appInfo = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        try {
+            context.startActivity(appInfo)
+        } catch (_: ActivityNotFoundException) {
+            // 系统入口不可用时，保留上方的手动路径。
+        }
     }
 }
 
@@ -384,13 +535,13 @@ private fun SettingsRowLabel(label: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun ActionRow(label: String, valueColor: Color? = null, onClick: () -> Unit) {
+private fun ActionRow(label: String, valueColor: Color? = null, enabled: Boolean = true, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(8.dp))
-            .clickable(role = Role.Button, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(vertical = 12.dp),
         contentAlignment = Alignment.CenterStart,
     ) {

@@ -242,11 +242,12 @@ private fun HeroCard(
             }
         }
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(14.dp))
         AreaChart(
             values = chart.values,
             startLabel = chart.startLabel,
             endLabel = chart.endLabel,
+            height = 126.dp,
             description = "${range.label} 费用趋势，合计 ${nf.money(totals.cost)}",
         )
     }
@@ -258,17 +259,17 @@ private fun CacheCard(cachedInput: Long, tokens: Long, modifier: Modifier = Modi
     val ratio = if (tokens > 0) (cachedInput.toFloat() / tokens.toFloat()) else 0f
     SoftCard(modifier = modifier, contentPadding = TokensSpace.CardPaddingCompact) {
         CardLabel("缓存读")
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             DialRing(
                 progress = ratio,
                 value = "${(ratio * 100).toInt()}",
                 caption = "占 tokens",
-                size = 120.dp,
+                size = 104.dp,
                 description = "缓存读占 tokens ${(ratio * 100).toInt()}%",
             )
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             Column {
                 SmallLabel("缓存读")
@@ -302,7 +303,7 @@ private fun ActivityCard(
 ) {
     SoftCard(modifier = modifier, contentPadding = TokensSpace.CardPaddingCompact) {
         CardLabel("活跃")
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         // 一年的活跃时长能到「2459h 46m」：放不下就整体缩小，不再裁掉末尾的 m。
         FitText(
             text = Fmt.duration(activeSeconds),
@@ -311,7 +312,7 @@ private fun ActivityCard(
             letterSpacing = (-0.5).sp,
         )
         SmallLabel("生成耗时合计")
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
         StatPair("Sessions", sessions.toString())
         Spacer(Modifier.height(6.dp))
         // 等宽字体里空格占一整格，数字和「台」之间不留空格。

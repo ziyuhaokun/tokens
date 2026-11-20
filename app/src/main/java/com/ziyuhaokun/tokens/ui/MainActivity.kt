@@ -109,15 +109,15 @@ class MainActivity : ComponentActivity() {
                             !state.configured -> SetupScreen(
                                 saving = state.saving,
                                 error = state.saveError,
+                                login = state.login,
+                                onLogin = viewModel::startBrowserLogin,
+                                onCancelLogin = viewModel::cancelBrowserLogin,
                                 onSave = viewModel::saveCredentials,
                             )
 
                             showSettings -> SettingsScreen(
                                 settings = stored,
                                 versionName = versionName,
-                                saving = state.saving,
-                                saveError = state.saveError,
-                                saveCount = state.saveCount,
                                 onBack = ::closeSettings,
                                 onThemeMode = { scope.launch { container.repository.saveThemeMode(it) } },
                                 onAccent = { scope.launch { container.repository.saveAccent(it) } },
@@ -130,9 +130,9 @@ class MainActivity : ComponentActivity() {
                                 onReceiptStyle = { scope.launch { container.repository.saveReceiptStyle(it) } },
                                 onReceiptLanguage = { scope.launch { container.repository.saveReceiptLanguage(it) } },
                                 onPreviewReceipt = ::printReceipt,
+                                canPinWidget = remember { container.widgetSync.canPin() },
+                                onPinWidget = container.widgetSync::pin,
                                 // key 留空 = 只改服务器地址，用旧 key 在新地址上验证。
-                                onSaveCredentials = viewModel::saveCredentials,
-                                onDismissCredentials = viewModel::clearSaveError,
                                 onSignOut = {
                                     viewModel.signOut()
                                     closeSettings()
@@ -144,7 +144,6 @@ class MainActivity : ComponentActivity() {
                                         refreshEverything()
                                     }
                                 },
-                                onRefreshAll = { refreshEverything() },
                             )
 
                             else -> {

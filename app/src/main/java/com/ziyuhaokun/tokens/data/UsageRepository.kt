@@ -21,6 +21,7 @@ class UsageRepository(
     private val api: UsageApi,
     private val store: SettingsStore,
     private val cache: UsageCache,
+    private val deviceLogin: DeviceLoginApi = DeviceLoginApi(),
 ) {
     val settings: Flow<StoredSettings> = store.data
 
@@ -49,6 +50,13 @@ class UsageRepository(
         }
         return if (store.saveCredentials(key, url)) null else "Key 加密保存失败（Keystore 不可用）"
     }
+
+    /** 浏览器登录第一步：拿验证码和确认链接。 */
+    suspend fun requestDeviceLogin(baseUrl: String): DeviceLoginRequest =
+        deviceLogin.request(baseUrl, DeviceLoginApi.CLIENT_NAME, DeviceLoginApi.hostnameOf())
+
+    suspend fun pollDeviceLogin(baseUrl: String, deviceCode: String): DevicePollResult =
+        deviceLogin.poll(baseUrl, deviceCode)
 
     /** 退出：清 key + 清掉全部缓存（不留上一个账号的数字）。 */
     suspend fun signOut() {

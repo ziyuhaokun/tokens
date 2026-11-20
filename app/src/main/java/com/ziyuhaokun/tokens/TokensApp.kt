@@ -18,6 +18,11 @@ class TokensApp : Application() {
         val container = AppContainer.get(this)
         appScope.launch {
             container.cache.dropLegacy()
+            // Android 15+：把小组件的示例预览交给系统，小部件列表里显示真实样式。每个版本只发一次。
+            runCatching {
+                val info = packageManager.getPackageInfo(packageName, 0)
+                container.widgetSync.publishPreviewsOnce(androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info))
+            }
             val settings = container.settings.snapshot()
             if (settings.configured) {
                 RefreshScheduler.schedule(this@TokensApp)

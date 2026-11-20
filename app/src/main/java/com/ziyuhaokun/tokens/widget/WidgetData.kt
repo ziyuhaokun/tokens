@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.mapLatest
 
+/** 大尺寸里「按工具 · 7 天」的一行。costUsd 是美元原值，显示时走 NumberFormats 换算。 */
+data class WidgetToolRow(val name: String, val costUsd: Double)
+
 data class WidgetSnapshot(
     val configured: Boolean,
     val handle: String?,
@@ -25,11 +28,14 @@ data class WidgetSnapshot(
     val trend: List<Double>,
     val updatedAt: Long?,
     val message: String?,
+    /** 7 天里花钱最多的几个工具（最多 3 个），给 4x4 用；没数据就是空列表。 */
+    val topTools: List<WidgetToolRow> = emptyList(),
     /** 外观跟着 App 的设置走，小组件不再写死深色。 */
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val accent: AccentChoice = AccentChoice.MONO,
     /** 货币 / token 单位，跟 App 设置一致。 */
     val formats: NumberFormats = NumberFormats.DEFAULT,
+    val refreshing: Boolean = false,
 ) {
     companion object {
         val NOT_CONFIGURED = WidgetSnapshot(
@@ -40,7 +46,27 @@ data class WidgetSnapshot(
             weekTokens = null,
             trend = emptyList(),
             updatedAt = null,
-            message = "先打开 App 填 API Key",
+            message = "打开 App 填写 API Key",
+        )
+
+        /**
+         * Android 15 桌面生成预览用的固定样例：不能带真实账号 / 真实金额。
+         * updatedAt = null，右上角就显示「刷新」而不是某个时刻。
+         */
+        val PREVIEW = WidgetSnapshot(
+            configured = true,
+            handle = "you",
+            todayCost = 12.34,
+            weekCost = 86.20,
+            weekTokens = 45_600_000L,
+            trend = listOf(8.4, 10.2, 7.9, 15.4, 12.76, 19.2, 12.34),
+            updatedAt = null,
+            message = null,
+            topTools = listOf(
+                WidgetToolRow("Claude Code", 52.40),
+                WidgetToolRow("Codex", 22.10),
+                WidgetToolRow("Gemini CLI", 11.70),
+            ),
         )
     }
 }
@@ -90,6 +116,9 @@ object WidgetData {
             } ?: emptyList(),
             updatedAt = maxOf(today?.second ?: 0L, week?.second ?: 0L).takeIf { it > 0 },
             message = null,
+            topTools = weekUsage?.let { usage ->
+                UsageAgg.bySource(usage).take(3).map { WidgetToolRow(name = it.name, costUsd = it.cost) }
+            } ?: emptyList(),
             themeMode = settings.themeMode,
             accent = settings.accent,
             formats = settings.numberFormats,

@@ -23,10 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -72,69 +74,7 @@ fun AreaChart(
                     if (description != null) Modifier.semantics { contentDescription = description } else Modifier,
                 ),
         ) {
-            if (values.size < 2) return@Canvas
-            val grow = reveal.value
-            val dotRadius = 4.dp.toPx()
-            val baseline = size.height - 1.dp.toPx()
-            val top = dotRadius + 2.dp.toPx()
-            val usable = baseline - top
-            val max = values.max().takeIf { it > 0.0 } ?: 1.0
-            // 左右各留出圆点半径，末点不会被裁掉一半。
-            val left = 0f
-            val right = size.width - dotRadius
-            val step = (right - left) / (values.size - 1)
-            val points = values.mapIndexed { index, value ->
-                val ratio = (value / max).toFloat().coerceIn(0f, 1f) * grow
-                Offset(left + index * step, baseline - ratio * usable)
-            }
-
-            val line = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                for (i in 1 until points.size) {
-                    val previous = points[i - 1]
-                    val current = points[i]
-                    val midX = (previous.x + current.x) / 2f
-                    cubicTo(midX, previous.y, midX, current.y, current.x, current.y)
-                }
-            }
-
-            val fill = Path().apply {
-                addPath(line)
-                lineTo(points.last().x, baseline)
-                lineTo(points.first().x, baseline)
-                close()
-            }
-
-            drawPath(
-                path = fill,
-                brush = Brush.verticalGradient(
-                    colors = listOf(colors.accent.copy(alpha = 0.42f), colors.accent.copy(alpha = 0.03f)),
-                    startY = top,
-                    endY = baseline,
-                ),
-            )
-            drawLine(
-                color = colors.hairline,
-                start = Offset(0f, baseline),
-                end = Offset(size.width, baseline),
-                strokeWidth = 1.dp.toPx(),
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 5.dp.toPx())),
-            )
-            drawPath(
-                path = line,
-                color = colors.accent,
-                style = Stroke(
-                    // 点很密（180 / 365 天）时粗线会糊成一团，改细。
-                    width = (if (values.size > 60) 1.5.dp else 2.5.dp).toPx(),
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round,
-                ),
-            )
-            drawCircle(
-                color = colors.accent,
-                radius = dotRadius,
-                center = points.last(),
-            )
+            drawUsageArea(values, colors.accent, colors.hairline, reveal.value)
         }
 
         Row(
@@ -148,6 +88,67 @@ fun AreaChart(
             Text(endLabel, color = Palette.Text, fontSize = TokensType.Caption, fontWeight = FontWeight.Medium)
         }
     }
+}
+
+/** 首页和桌面 4×4 小组件共用的面积图。 */
+internal fun DrawScope.drawUsageArea(
+    values: List<Double>,
+    color: Color,
+    baselineColor: Color,
+    reveal: Float = 1f,
+) {
+    if (values.isEmpty()) return
+    val dotRadius = 4.dp.toPx()
+    val baseline = size.height - 1.dp.toPx()
+    val top = dotRadius + 2.dp.toPx()
+    val max = values.maxOf { if (it.isFinite()) it else 0.0 }.takeIf { it > 0.0 } ?: 1.0
+    val right = size.width - dotRadius
+    val step = right / values.lastIndex.coerceAtLeast(1)
+    val points = values.mapIndexed { index, value ->
+        val ratio = if (value.isFinite()) (value / max).toFloat().coerceIn(0f, 1f) else 0f
+        val x = if (values.size == 1) right else index * step
+        Offset(x, baseline - ratio * (baseline - top) * reveal)
+    }
+    val line = Path().apply {
+        moveTo(points.first().x, points.first().y)
+        for (index in 1 until points.size) {
+            val previous = points[index - 1]
+            val current = points[index]
+            val midX = (previous.x + current.x) / 2f
+            cubicTo(midX, previous.y, midX, current.y, current.x, current.y)
+        }
+    }
+    val fill = Path().apply {
+        addPath(line)
+        lineTo(points.last().x, baseline)
+        lineTo(points.first().x, baseline)
+        close()
+    }
+    drawPath(
+        path = fill,
+        brush = Brush.verticalGradient(
+            colors = listOf(color.copy(alpha = 0.42f), color.copy(alpha = 0.03f)),
+            startY = top,
+            endY = baseline,
+        ),
+    )
+    drawLine(
+        color = baselineColor,
+        start = Offset(0f, baseline),
+        end = Offset(size.width, baseline),
+        strokeWidth = 1.dp.toPx(),
+        pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 5.dp.toPx())),
+    )
+    drawPath(
+        path = line,
+        color = color,
+        style = Stroke(
+            width = (if (values.size > 60) 1.5.dp else 2.5.dp).toPx(),
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round,
+        ),
+    )
+    drawCircle(color, dotRadius, points.last())
 }
 
 /**

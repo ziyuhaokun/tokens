@@ -1,6 +1,7 @@
 package com.ziyuhaokun.tokens
 
 import android.content.Context
+import com.ziyuhaokun.tokens.data.DeviceLoginApi
 import com.ziyuhaokun.tokens.data.SettingsStore
 import com.ziyuhaokun.tokens.data.UsageApi
 import com.ziyuhaokun.tokens.data.UsageCache
@@ -13,8 +14,9 @@ class AppContainer(context: Context) {
     val settings = SettingsStore(appContext)
     val cache = UsageCache(appContext)
     val api = UsageApi()
-    val repository = UsageRepository(api, settings, cache)
-    val widgetSync = WidgetSync(appContext)
+    val deviceLogin = DeviceLoginApi()
+    val repository = UsageRepository(api, settings, cache, deviceLogin)
+    val widgetSync = WidgetSync(appContext, repository)
 
     companion object {
         @Volatile

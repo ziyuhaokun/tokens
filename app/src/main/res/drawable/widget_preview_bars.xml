@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 静态预览里的示例柱状图（不是真实数据）。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="280dp"
+    android:height="80dp"
+    android:viewportWidth="280"
+    android:viewportHeight="80">
+    <path android:fillColor="@color/widget_bar" android:pathData="M0.0,52.0h33.1V80h-33.1z" />
+    <path android:fillColor="@color/widget_bar" android:pathData="M41.1,36.0h33.1V80h-33.1z" />
+    <path android:fillColor="@color/widget_bar" android:pathData="M82.3,48.0h33.1V80h-33.1z" />
+    <path android:fillColor="@color/widget_bar" android:pathData="M123.4,16.0h33.1V80h-33.1z" />
+    <path android:fillColor="@color/widget_bar" android:pathData="M164.6,32.0h33.1V80h-33.1z" />
+    <path android:fillColor="@color/widget_bar" android:pathData="M205.7,4.0h33.1V80h-33.1z" />
+    <path android:fillColor="@color/widget_bar" android:pathData="M246.9,24.0h33.1V80h-33.1z" />
+</vector>

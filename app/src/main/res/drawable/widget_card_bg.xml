@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 加载态 / 静态预览用的卡片底。实际小组件的圆角由系统按 @android:id/background 统一裁。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/widget_bg" />
+    <corners android:radius="16dp" />
+</shape>

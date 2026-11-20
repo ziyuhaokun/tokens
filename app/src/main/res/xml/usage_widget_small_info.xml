@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  尺寸按小米 HyperOS 技术规范的建议值：2x2 = 110x110dp，4x2 = 300x110dp，4x4 = 300x250dp。
+  minWidth / minHeight 只用来算占几格；实际大小由桌面网格决定（4x6 / 5x6 布局会不同），
+  布局里按实际尺寸自适应（见 UsageWidget）。
+  不声明 miuiWidget：那是要过小米审核的「小米小部件」，侧载应用声明后反而可能从安卓小部件列表里消失。
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/widget_desc_small"
+    android:initialLayout="@layout/widget_loading"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:previewImage="@drawable/ic_launcher_foreground"
+    android:previewLayout="@layout/widget_preview_small"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellWidth="2"
+    android:targetCellHeight="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen" />
