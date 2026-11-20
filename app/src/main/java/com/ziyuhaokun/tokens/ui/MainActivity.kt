@@ -5,17 +5,14 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -141,14 +138,9 @@ private fun SettingsDialog(
     onSignOut: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = Palette.Surface,
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, Palette.Line),
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                Text("设置", color = Palette.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        SoftCard(contentPadding = 18) {
+            Column {
+                Text("设置", color = Palette.Text, fontSize = 16.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = "Key 留空只更新服务端地址。",
