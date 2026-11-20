@@ -59,13 +59,18 @@ internal fun Response.readTextLimited(limit: Long = MAX_RESPONSE_BYTES): String 
     val source = body.source()
     val buffer = Buffer()
     var total = 0L
-    while (true) {
-        val read = source.read(buffer, 64L * 1024)
-        if (read == -1L) break
-        total += read
-        if (total > limit) throw UsageApiException.Decode("响应过大")
+    try {
+        while (true) {
+            val read = source.read(buffer, 64L * 1024)
+            if (read == -1L) break
+            total += read
+            if (total > limit) throw UsageApiException.Decode("响应过大")
+        }
+        return buffer.readUtf8()
+    } catch (e: IOException) {
+        // 读取过程中的网络/解码异常不要让原始 message（可能是整段响应）裸奔到界面。
+        throw UsageApiException.Decode("读取响应失败")
     }
-    return buffer.readUtf8()
 }
 
 class UsageApi(

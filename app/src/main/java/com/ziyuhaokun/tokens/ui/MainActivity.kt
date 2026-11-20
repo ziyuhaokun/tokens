@@ -68,6 +68,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 冷启动/转屏重建的第一帧可能就有 key 输入框：先无条件保护，
+        // 等设置流确认已配置后再由下面的 LaunchedEffect 清掉。
+        setSecureWindow(true)
         setContent {
             val scope = rememberCoroutineScope()
             // 提到最外层：录制层要知道设置页是否打开，小票 / 浮层也都从这里读。

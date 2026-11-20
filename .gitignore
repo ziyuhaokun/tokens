@@ -13,3 +13,11 @@ captures/
 # 本地产物
 temp/
 *.log
+.kotlin/
+
+# 签名私钥：绝不入库
+*.jks
+*.keystore
+*.p12
+keystore/
+key.properties

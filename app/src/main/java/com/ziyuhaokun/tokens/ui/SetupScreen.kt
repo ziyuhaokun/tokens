@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import android.content.Intent
 import android.net.Uri
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -247,15 +248,22 @@ private fun LoginWaiting(waiting: LoginPhase.Waiting, onCancel: () -> Unit) {
  * 而用户会在这个页面里输入验证码。
  */
 private fun trustedVerificationUri(raw: String, baseUrl: String): Uri? {
-    val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
-    val scheme = uri.scheme?.lowercase() ?: return null
+    // 不同解析器对 \ 和 @ 的解释不一致（https://trusted\@evil.com 在 Uri 里 host=trusted，
+    // 浏览器里却是 evil.com）；含这些字符的串一律拒绝，不赌解析差异。
+    if (raw.any { it.isWhitespace() || it.isISOControl() || it == '\\' || it == '@' }) return null
+    // 用 HttpUrl 做真正的判定，导航也用规范化后的 URL，避免「校验一个串、打开另一个串」。
+    val parsed = runCatching { raw.toHttpUrlOrNull() }.getOrNull() ?: return null
+    val scheme = parsed.scheme.lowercase()
     if (scheme != "https" && scheme != "http") return null
-    val host = uri.host?.lowercase() ?: return null
-    val baseHost = runCatching { java.net.URI(baseUrl).host?.lowercase() }.getOrNull()
+    val host = parsed.host.lowercase()
+    // baseUrl 解析不出来就 fail-closed：不能因为「没法比较」就放任意域名过关。
+    val baseHost = normalizeBaseUrl(baseUrl)
+        ?.let { runCatching { it.toHttpUrlOrNull()?.host?.lowercase() }.getOrNull() }
+        ?: return null
     val loopback = host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2"
     if (scheme == "http" && !loopback) return null
-    if (!loopback && baseHost != null && host != baseHost) return null
-    return uri
+    if (!loopback && host != baseHost) return null
+    return runCatching { Uri.parse(parsed.toString()) }.getOrNull()
 }
 
 /** 被拒绝 / 过期 / 出错的提示，颜色跟着严重程度走。 */

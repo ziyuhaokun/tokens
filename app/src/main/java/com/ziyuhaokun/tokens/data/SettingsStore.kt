@@ -6,11 +6,13 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -94,22 +96,25 @@ class SettingsStore(private val context: Context) {
     }
 
     // 改主题 / 字号也会让设置流重发；密文没变就别再走一遍 Keystore 解密。
-    @Volatile private var lastBlob: String? = null
-    @Volatile private var lastKey: String? = null
+    // 单个 volatile 保存 (blob, key) 对：两个独立字段在换账号时会出现「新 blob + 旧 key」。
+    @Volatile private var cachedDecrypt: Pair<String, String?>? = null
 
     private fun decryptCached(blob: String?): String? {
         if (blob == null) return null
-        if (blob == lastBlob) return lastKey
+        cachedDecrypt?.let { if (it.first == blob) return it.second }
         val key = SecretBox.decrypt(blob)
-        lastKey = key
-        lastBlob = blob
+        cachedDecrypt = blob to key
         return key
     }
 
-    val data: Flow<StoredSettings> = context.tokensDataStore.data.map { prefs ->
+    val data: Flow<StoredSettings> = context.tokensDataStore.data
+        // prefs 文件损坏 / IO 失败时退回空设置（引导页），不要抛未捕获异常崩掉应用。
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
         StoredSettings(
             apiKey = decryptCached(prefs[Keys.apiKeyBlob]),
-            baseUrl = prefs[Keys.baseUrl]?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL,
+            // 旧版本写进来的 http:// 地址在读取时也要拦住，不能因为「存的时候没问题」就一直带 key 发过去。
+            baseUrl = normalizeBaseUrl(prefs[Keys.baseUrl] ?: "") ?: DEFAULT_BASE_URL,
             range = Range.fromId(prefs[Keys.rangeId]),
             uploadProject = prefs[Keys.uploadProject],
             themeMode = ThemeMode.fromId(prefs[Keys.themeMode]),

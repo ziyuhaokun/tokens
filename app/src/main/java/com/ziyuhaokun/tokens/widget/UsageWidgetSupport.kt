@@ -68,9 +68,10 @@ class UsageRefreshWorker(
         val outcome = AppContainer.get(applicationContext).widgetSync.refresh(minIntervalMillis = 0)
         return when (outcome) {
             null, RefreshOutcome.OK -> Result.success()
-            // 没 key / key 失效：重试也没用，等用户在 App 里重新配置。
+            // 没 key / key 失效 / 429 限流：重试也没用，等用户在 App 里重新配置或下一个周期。
             RefreshOutcome.NOT_CONFIGURED, RefreshOutcome.UNAUTHORIZED -> Result.success()
-            RefreshOutcome.FAILED -> Result.retry()
+            // 永久性失败（403/404 等）重试只会指数退避到 5 小时并永不终止，封顶两次。
+            RefreshOutcome.FAILED -> if (runAttemptCount >= 2) Result.failure() else Result.retry()
         }
     }
 }

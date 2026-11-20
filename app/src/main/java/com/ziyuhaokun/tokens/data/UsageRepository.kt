@@ -10,7 +10,7 @@ data class Snapshot(
     val fetchedAt: Long?,
     val error: String?,
     val fromCache: Boolean,
-    /** 401：key 失效，后台任务不该再重试。 */
+    /** 401 / 429：key 失效或被限流，后台任务不该再重试。 */
     val unauthorized: Boolean = false,
 )
 
@@ -23,6 +23,9 @@ class UsageRepository(
     private val cache: UsageCache,
     private val deviceLogin: DeviceLoginApi = DeviceLoginApi(),
 ) {
+    /** 退出登录 / 换账号时 +1，在飞的刷新回来后不再写缓存，防止旧账号数据被写回。 */
+    @Volatile private var cacheGeneration = 0
+
     val settings: Flow<StoredSettings> = store.data
 
     /** 缓存一有写入 / 清空就变，小组件用它触发重读。 */
@@ -36,7 +39,9 @@ class UsageRepository(
      * 返回 null 表示成功，否则是给用户看的错误文案。
      */
     suspend fun verifyAndSaveCredentials(apiKey: String, baseUrl: String): String? {
-        val url = baseUrl.trim().ifBlank { DEFAULT_BASE_URL }
+        // 校验下沉到 repository：任何调用方传进来的地址都要过这一关，不能只靠 UI 自觉。
+        val url = normalizeBaseUrl(baseUrl)
+            ?: return "服务器地址无效：请输入 https 地址（本机调试可用 http://localhost）"
         val key = apiKey.trim().ifBlank { store.snapshot().apiKey.orEmpty() }
         if (key.isBlank()) return "请输入 API Key"
         try {
@@ -48,6 +53,8 @@ class UsageRepository(
         } catch (e: Exception) {
             return e.message ?: "验证失败"
         }
+        // 换账号/改地址后，之前带着旧凭据在飞的请求一律不许再落缓存。
+        cacheGeneration++
         return if (store.saveCredentials(key, url)) null else "Key 加密保存失败（Keystore 不可用）"
     }
 
@@ -60,6 +67,7 @@ class UsageRepository(
 
     /** 退出：清 key + 清掉全部缓存（不留上一个账号的数字）。 */
     suspend fun signOut() {
+        cacheGeneration++
         store.clearCredentials()
         cache.clearAll()
     }
@@ -128,10 +136,12 @@ class UsageRepository(
             return Snapshot(null, null, "未配置 API Key", false)
         }
 
+        val generation = cacheGeneration
         return try {
             val usage = api.fetch(settings.baseUrl, key, params, zone)
             val at = System.currentTimeMillis()
-            cache.write(scope, cacheId, usage.rawJson, at)
+            // 退出登录 / 换账号期间完成的旧请求直接丢弃，别把上一个账号的数字写回来。
+            if (cacheGeneration == generation) cache.write(scope, cacheId, usage.rawJson, at)
             Snapshot(usage, at, null, false)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -143,7 +153,9 @@ class UsageRepository(
                 fetchedAt = fallback?.fetchedAt,
                 error = e.message ?: "未知错误",
                 fromCache = fallback != null,
-                unauthorized = e is UsageApiException.Unauthorized,
+                // 429 没有官方 Retry-After 解析需求：交给下一个 30 分钟周期即可，不要指数退避无限重试。
+                unauthorized = e is UsageApiException.Unauthorized ||
+                    (e is UsageApiException.Http && e.code == 429),
             )
         }
     }
