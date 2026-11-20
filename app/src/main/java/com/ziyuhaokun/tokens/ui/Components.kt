@@ -109,6 +109,7 @@ fun ScreenScaffold(
 fun SoftCard(
     modifier: Modifier = Modifier,
     contentPadding: Dp = TokensSpace.CardPadding,
+    verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = RoundedCornerShape(TokensSpace.CardRadius)
@@ -119,6 +120,7 @@ fun SoftCard(
             .background(Brush.verticalGradient(listOf(Palette.CardTop, Palette.CardBottom)))
             .border(1.dp, Palette.HairlineSoft, shape)
             .padding(contentPadding),
+        verticalArrangement = verticalArrangement,
         content = content,
     )
 }

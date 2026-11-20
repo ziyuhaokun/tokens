@@ -257,10 +257,18 @@ private fun HeroCard(
 private fun CacheCard(cachedInput: Long, tokens: Long, modifier: Modifier = Modifier) {
     val nf = LocalNumberFormats.current
     val ratio = if (tokens > 0) (cachedInput.toFloat() / tokens.toFloat()) else 0f
-    SoftCard(modifier = modifier, contentPadding = TokensSpace.CardPaddingCompact) {
+    // SpaceBetween：卡片被右边的活跃卡拉高时，多出来的空白均分到圆环上下，圆环不再贴顶；
+    // 没被拉高时空白为 0，间距由圆环外面的 8dp padding 保证，和原来一样。
+    SoftCard(
+        modifier = modifier,
+        contentPadding = TokensSpace.CardPaddingCompact,
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
         CardLabel("缓存读")
-        Spacer(Modifier.height(8.dp))
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             DialRing(
                 progress = ratio,
                 value = "${(ratio * 100).toInt()}",
@@ -269,7 +277,6 @@ private fun CacheCard(cachedInput: Long, tokens: Long, modifier: Modifier = Modi
                 description = "缓存读占 tokens ${(ratio * 100).toInt()}%",
             )
         }
-        Spacer(Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             Column {
                 SmallLabel("缓存读")

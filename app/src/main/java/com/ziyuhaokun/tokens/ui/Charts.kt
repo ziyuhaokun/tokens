@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
@@ -30,9 +31,13 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -231,23 +236,46 @@ fun DialRing(
                 )
             }
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Row {
-                Text(
-                    text = value,
-                    color = Palette.Text,
-                    fontSize = (34 * scale).coerceAtLeast(22f).sp,
-                    fontWeight = FontWeight.Light,
-                    modifier = Modifier.alignByBaseline(),
-                )
-                Text(
-                    text = unit,
-                    color = Palette.Muted,
-                    fontSize = TokensType.Caption,
-                    modifier = Modifier.alignByBaseline().padding(start = 1.dp),
-                )
-            }
-            Text(text = caption, color = Palette.Dim, fontSize = TokensType.Micro)
+        // 数字固定在圆环正中心，不跟下面的小字一起「整块居中」（整块居中会让数字比圆心高一截）。
+        // lineHeight = 字号 + Trim.Both：行框贴着字形，去掉上下的字体留白，视觉中心才是真中心。
+        val valueSp = (34 * scale).coerceAtLeast(22f)
+        val tightLine = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both)
+        val density = LocalDensity.current
+        // 小字紧贴数字下方：数字字形半高约 0.355em，再加 2dp 间隙和小字自己的半高。
+        val captionOffset = with(density) {
+            valueSp.sp.toDp() * 0.355f + 2.dp + TokensType.Micro.toDp() / 2
         }
+        // 左边放一个透明的单位占位，和右边真单位等宽：数字本身才会水平居中，而不是「数字+%」整体居中。
+        Row(modifier = Modifier.clearAndSetSemantics { }) {
+            Text(
+                text = unit,
+                color = Color.Transparent,
+                fontSize = TokensType.Caption,
+                style = TextStyle(lineHeight = TokensType.Caption, lineHeightStyle = tightLine),
+                modifier = Modifier.alignByBaseline().padding(end = 1.dp),
+            )
+            Text(
+                text = value,
+                color = Palette.Text,
+                fontSize = valueSp.sp,
+                fontWeight = FontWeight.Light,
+                style = TextStyle(lineHeight = valueSp.sp, lineHeightStyle = tightLine),
+                modifier = Modifier.alignByBaseline(),
+            )
+            Text(
+                text = unit,
+                color = Palette.Muted,
+                fontSize = TokensType.Caption,
+                style = TextStyle(lineHeight = TokensType.Caption, lineHeightStyle = tightLine),
+                modifier = Modifier.alignByBaseline().padding(start = 1.dp),
+            )
+        }
+        Text(
+            text = caption,
+            color = Palette.Dim,
+            fontSize = TokensType.Micro,
+            style = TextStyle(lineHeight = TokensType.Micro, lineHeightStyle = tightLine),
+            modifier = Modifier.offset(y = captionOffset).clearAndSetSemantics { },
+        )
     }
 }
