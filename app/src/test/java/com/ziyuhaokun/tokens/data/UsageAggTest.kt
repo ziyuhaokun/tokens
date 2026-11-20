@@ -117,6 +117,8 @@ class UsageAggTest {
         assertEquals(7, UsageAgg.trend(empty, Range.D7, zone).size)
         assertEquals(30, UsageAgg.trend(empty, Range.D30, zone).size)
         assertEquals(90, UsageAgg.trend(empty, Range.D90, zone).size)
+        assertEquals(180, UsageAgg.trend(empty, Range.D180, zone).size)
+        assertEquals(365, UsageAgg.trend(empty, Range.D365, zone).size)
     }
 
     @Test

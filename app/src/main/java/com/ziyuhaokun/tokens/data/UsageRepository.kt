@@ -3,7 +3,6 @@ package com.ziyuhaokun.tokens.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
-import java.time.LocalDate
 import java.time.ZoneId
 
 data class Snapshot(
@@ -67,22 +66,19 @@ class UsageRepository(
 
     /** 先网络、失败回退缓存：网络失败也能看到上次的数据 + 时间戳。 */
     suspend fun load(range: Range, settings: StoredSettings): Snapshot =
-        fetchWithFallback(settings, range.id, range.params())
+        fetchWithFallback(settings, range.cacheId, range.params())
 
     /** 只读缓存，不发请求。没配 key 或没有缓存时返回 null。 */
     suspend fun cached(range: Range, settings: StoredSettings): Snapshot? =
-        cachedSnapshot(settings, range.id)
+        cachedSnapshot(settings, range.cacheId)
 
     /**
      * 整年热力图：一次拿完，不分段。服务端接受任意 from/to 区间
      * （实测 365 天 ~1.5MB / 600ms），所以不需要拉 4 次 90 天再拼。
      */
     suspend fun loadYear(settings: StoredSettings, zone: ZoneId = ZoneId.systemDefault()): Snapshot {
-        val today = LocalDate.now(zone)
-        val params = mapOf(
-            "from" to today.minusDays((YearAgg.DAYS - 1).toLong()).toString(),
-            "to" to today.toString(),
-        )
+        // 和首页 365D 用同一段区间、同一份缓存（Range.D365.cacheId == YEAR_CACHE_KEY）。
+        val params = Range.dateWindow(YearAgg.DAYS, zone)
         return fetchWithFallback(settings, YEAR_CACHE_KEY, params, zone)
     }
 
@@ -104,7 +100,7 @@ class UsageRepository(
     /** 小组件只读缓存：没配 key 时一律当作没有数据，不显示上一个账号的数字。 */
     suspend fun readCacheRaw(range: Range, settings: StoredSettings): CacheEntry? {
         val scope = settings.cacheScope ?: return null
-        return cache.read(scope, range.id)
+        return cache.read(scope, range.cacheId)
     }
 
     private suspend fun fetchWithFallback(

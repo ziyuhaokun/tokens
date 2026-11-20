@@ -3,6 +3,7 @@ package com.ziyuhaokun.tokens.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -286,38 +287,58 @@ private fun AppTabSwitch(selected: AppTab, onSelect: (AppTab) -> Unit) {
     }
 }
 
-/** 时间范围：纯文字，选中项亮色 + 下方短横线，未选中灰色。每项点击区域 44dp 高。 */
+/**
+ * 时间范围：纯文字，选中项亮色 + 下方短横线，未选中灰色。每项点击区域 44dp 高。
+ *
+ * 七档在标准字号下等分一行；大字号下一行放不下，改成可横向滑动。
+ */
 @Composable
 fun RangeTabs(selected: Range, onSelect: (Range) -> Unit, modifier: Modifier = Modifier) {
-    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        Range.entries.forEach { range ->
-            val active = range == selected
+    if (isLargeText()) {
+        Row(
+            modifier = modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Range.entries.forEach { range ->
+                RangeTab(range, range == selected, onSelect, Modifier.padding(horizontal = 10.dp))
+            }
+        }
+    } else {
+        Row(modifier = modifier.fillMaxWidth()) {
+            Range.entries.forEach { range ->
+                RangeTab(range, range == selected, onSelect, Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RangeTab(range: Range, active: Boolean, onSelect: (Range) -> Unit, modifier: Modifier) {
+    Box(
+        modifier = modifier
+            .heightIn(min = TokensSpace.MinTouch)
+            .clip(RoundedCornerShape(10.dp))
+            .semantics { this.selected = active }
+            .clickable(role = Role.Tab) { onSelect(range) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = range.label,
+                color = if (active) Palette.Text else Palette.Dim,
+                fontSize = TokensType.Body,
+                fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+                maxLines = 1,
+                softWrap = false,
+            )
+            Spacer(Modifier.height(4.dp))
             Box(
                 modifier = Modifier
-                    .heightIn(min = TokensSpace.MinTouch)
-                    .clip(RoundedCornerShape(10.dp))
-                    .semantics { this.selected = active }
-                    .clickable(role = Role.Tab) { onSelect(range) }
-                    .padding(horizontal = 10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = range.label,
-                        color = if (active) Palette.Text else Palette.Dim,
-                        fontSize = TokensType.Body,
-                        fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Box(
-                        modifier = Modifier
-                            .width(18.dp)
-                            .height(2.dp)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(if (active) Palette.Accent else Color.Transparent),
-                    )
-                }
-            }
+                    .width(18.dp)
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(if (active) Palette.Accent else Color.Transparent),
+            )
         }
     }
 }

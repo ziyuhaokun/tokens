@@ -102,11 +102,7 @@ object UsageAgg {
             }
         }
 
-        val days = when (range) {
-            Range.D30 -> 30
-            Range.D90 -> 90
-            else -> 7
-        }
+        val days = range.days
         for (bucket in usage.buckets) {
             if (bucket.bucketStartMillis <= 0) continue
             val key = Instant.ofEpochMilli(bucket.bucketStartMillis).atZone(zone).toLocalDate()
