@@ -70,7 +70,8 @@ fun BigMoney(integer: String, decimals: String, modifier: Modifier = Modifier, s
     Row(modifier = modifier) {
         Text(
             text = integer,
-            color = Palette.Text,
+            // 强调色只作用在这类关键数字上；选「单色」时它等于正文色。
+            color = Palette.Accent,
             fontSize = size.sp,
             fontWeight = FontWeight.Light,
             letterSpacing = (-1).sp,
@@ -96,8 +97,9 @@ fun StatPair(label: String, value: String, valueColor: androidx.compose.ui.graph
             fontSize = 11.sp,
             maxLines = 1,
             softWrap = false,
-            modifier = Modifier.width(60.dp),
+            modifier = if (isLargeText()) Modifier else Modifier.width(60.dp),
         )
+        if (isLargeText()) Spacer(Modifier.width(8.dp))
         Text(
             text = value,
             color = valueColor,
@@ -168,7 +170,7 @@ private fun AppTabSwitch(selected: AppTab, onSelect: (AppTab) -> Unit) {
                 fontSize = 11.sp,
                 modifier = Modifier
                     .clip(RoundedCornerShape(7.dp))
-                    .background(if (isOn) Palette.CardTop else androidx.compose.ui.graphics.Color.Transparent)
+                    .background(if (isOn) Palette.Accent.copy(alpha = 0.16f) else androidx.compose.ui.graphics.Color.Transparent)
                     .clickable { if (!isOn) onSelect(entry) }
                     .padding(horizontal = 9.dp, vertical = 5.dp),
             )
@@ -200,7 +202,7 @@ fun RangeTabs(selected: Range, onSelect: (Range) -> Unit, modifier: Modifier = M
                         modifier = Modifier
                             .width(if (active) 16.dp else 0.dp)
                             .height(1.5.dp)
-                            .background(if (active) Palette.Text else Palette.CardTop),
+                            .background(if (active) Palette.Accent else Palette.CardTop),
                     )
                 }
             }

@@ -1,5 +1,12 @@
 package com.ziyuhaokun.tokens.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +49,19 @@ fun AreaChart(
     modifier: Modifier = Modifier,
     height: Dp = 132.dp,
 ) {
+    val colors = LocalTokensColors.current
+    val motion = LocalMotionEnabled.current
+    // 入场：从基线长起来。关掉动态效果时直接到 1。
+    val reveal = remember { Animatable(if (motion) 0f else 1f) }
+    LaunchedEffect(values, motion) {
+        if (!motion) {
+            reveal.snapTo(1f)
+        } else {
+            reveal.snapTo(0f)
+            reveal.animateTo(1f, tween(durationMillis = 520, easing = FastOutSlowInEasing))
+        }
+    }
+
     Column(modifier) {
         Canvas(
             modifier = Modifier
@@ -49,11 +69,12 @@ fun AreaChart(
                 .height(height),
         ) {
             if (values.size < 2) return@Canvas
+            val grow = reveal.value
             val baseline = size.height - 1.dp.toPx()
             val max = values.max().takeIf { it > 0.0 } ?: 1.0
             val step = size.width / (values.size - 1)
             val points = values.mapIndexed { index, value ->
-                val ratio = (value / max).toFloat().coerceIn(0f, 1f)
+                val ratio = (value / max).toFloat().coerceIn(0f, 1f) * grow
                 Offset(index * step, baseline - ratio * baseline * 0.9f)
             }
 
@@ -77,14 +98,14 @@ fun AreaChart(
             drawPath(
                 path = fill,
                 brush = Brush.verticalGradient(
-                    colors = listOf(Palette.TextSoft.copy(alpha = 0.26f), Color.Transparent),
+                    colors = listOf(colors.accent.copy(alpha = 0.24f), Color.Transparent),
                     startY = 0f,
                     endY = baseline,
                 ),
             )
             drawPath(
                 path = line,
-                color = Palette.TextSoft,
+                color = colors.accent,
                 style = Stroke(
                     width = 2.dp.toPx(),
                     cap = StrokeCap.Round,
@@ -92,14 +113,14 @@ fun AreaChart(
                 ),
             )
             drawLine(
-                color = Palette.Hairline,
+                color = colors.hairline,
                 start = Offset(0f, baseline),
                 end = Offset(size.width, baseline),
                 strokeWidth = 1.dp.toPx(),
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 6f)),
             )
             drawCircle(
-                color = Palette.Text,
+                color = colors.accent,
                 radius = 3.5.dp.toPx(),
                 center = points.last(),
             )
@@ -129,13 +150,22 @@ fun DialRing(
     modifier: Modifier = Modifier,
     size: Dp = 132.dp,
 ) {
+    val colors = LocalTokensColors.current
+    val motion = LocalMotionEnabled.current
+    // 不要按开关条件调用 Composable：开关变化时槽位会错位。
+    // 统一调用，只换 animationSpec（精简 = 立刻到位）。
+    val animated = animateFloatAsState(
+        targetValue = progress,
+        animationSpec = if (motion) tween(620) else snap(),
+        label = "dial",
+    )
     Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.size(size)) {
             val ticks = 64
             val center = Offset(this.size.width / 2f, this.size.height / 2f)
             val outer = this.size.minDimension / 2f
             val inner = outer - 7.dp.toPx()
-            val active = (progress.coerceIn(0f, 1f) * ticks).toInt()
+            val active = (animated.value.coerceIn(0f, 1f) * ticks).toInt()
             for (i in 0 until ticks) {
                 // 从正上方开始顺时针
                 val angle = Math.toRadians((i * 360.0 / ticks) - 90.0)
@@ -148,7 +178,7 @@ fun DialRing(
                     center.y + sin(angle).toFloat() * outer,
                 )
                 drawLine(
-                    color = if (i < active) Palette.TextSoft else Palette.Faint,
+                    color = if (i < active) colors.textSoft else colors.faint,
                     start = start,
                     end = end,
                     strokeWidth = if (i < active) 2.dp.toPx() else 1.6.dp.toPx(),

@@ -28,6 +28,12 @@ class UsageRepository(
 
     suspend fun saveUploadProject(value: Boolean?) = store.saveUploadProject(value)
 
+    suspend fun saveThemeMode(mode: ThemeMode) = store.saveThemeMode(mode)
+    suspend fun saveAccent(accent: AccentChoice) = store.saveAccent(accent)
+    suspend fun saveFontScale(choice: FontScaleChoice) = store.saveFontScale(choice)
+    suspend fun saveMotion(enabled: Boolean) = store.saveMotion(enabled)
+    suspend fun clearCache() = store.clearCache()
+
     /** 先缓存后网络：有缓存立刻可用，网络失败也能看到上次的数据 + 时间戳。 */
     suspend fun load(range: Range, settings: StoredSettings): Snapshot {
         val cache = store.readCache(range)

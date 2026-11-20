@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#FF0A0B0D</color>
-    <color name="accent">#FF7AA2FF</color>
-    <!-- 图标底：近白，与黑色标记形成高对比（参考 Toknix 风格） -->
+    <!--
+      启动窗口的底色。App 自己的深浅色是设置项，和系统主题可能不一致，
+      这里按系统主题做最佳近似：系统浅色时用近白，避免先闪一下黑。
+    -->
+    <color name="bg">#FFF6F6F7</color>
+    <!-- 图标底：近白，与黑色标记形成高对比（参考 Toknix 风格）。
+         这是品牌色，不随主题变。 -->
     <color name="ic_launcher_background">#FFF6F6F7</color>
 </resources>

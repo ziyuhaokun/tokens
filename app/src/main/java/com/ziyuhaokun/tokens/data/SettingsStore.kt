@@ -24,6 +24,11 @@ data class StoredSettings(
     val baseUrl: String,
     val range: Range,
     val uploadProject: Boolean?,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val accent: AccentChoice = AccentChoice.MONO,
+    val fontScale: FontScaleChoice = FontScaleChoice.STANDARD,
+    /** false = 精简动态效果（关掉入场与切换动画）。 */
+    val motion: Boolean = true,
 ) {
     val configured: Boolean get() = !apiKey.isNullOrBlank()
 }
@@ -37,6 +42,10 @@ class SettingsStore(private val context: Context) {
         val baseUrl = stringPreferencesKey("base_url")
         val rangeId = stringPreferencesKey("range_id")
         val uploadProject = booleanPreferencesKey("upload_project")
+        val themeMode = stringPreferencesKey("theme_mode")
+        val accent = stringPreferencesKey("accent")
+        val fontScale = stringPreferencesKey("font_scale")
+        val motion = booleanPreferencesKey("motion")
         fun cacheJson(id: String) = stringPreferencesKey("cache_json_$id")
         fun cacheAt(id: String) = longPreferencesKey("cache_at_$id")
     }
@@ -47,6 +56,10 @@ class SettingsStore(private val context: Context) {
             baseUrl = prefs[Keys.baseUrl]?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL,
             range = Range.fromId(prefs[Keys.rangeId]),
             uploadProject = prefs[Keys.uploadProject],
+            themeMode = ThemeMode.fromId(prefs[Keys.themeMode]),
+            accent = AccentChoice.fromId(prefs[Keys.accent]),
+            fontScale = FontScaleChoice.fromId(prefs[Keys.fontScale]),
+            motion = prefs[Keys.motion] ?: true,
         )
     }
 
@@ -73,6 +86,33 @@ class SettingsStore(private val context: Context) {
 
     suspend fun saveBaseUrl(url: String) {
         context.tokensDataStore.edit { it[Keys.baseUrl] = url.trim().ifBlank { DEFAULT_BASE_URL } }
+    }
+
+    suspend fun saveThemeMode(mode: ThemeMode) {
+        context.tokensDataStore.edit { it[Keys.themeMode] = mode.id }
+    }
+
+    suspend fun saveAccent(accent: AccentChoice) {
+        context.tokensDataStore.edit { it[Keys.accent] = accent.id }
+    }
+
+    suspend fun saveFontScale(choice: FontScaleChoice) {
+        context.tokensDataStore.edit { it[Keys.fontScale] = choice.id }
+    }
+
+    suspend fun saveMotion(enabled: Boolean) {
+        context.tokensDataStore.edit { it[Keys.motion] = enabled }
+    }
+
+    /** 清掉所有时间范围的缓存（不动身份与外观设置）。 */
+    suspend fun clearCache() {
+        val ids = Range.entries.map { it.id } + "year"
+        context.tokensCacheStore.edit { prefs ->
+            ids.forEach { id ->
+                prefs.remove(Keys.cacheJson(id))
+                prefs.remove(Keys.cacheAt(id))
+            }
+        }
     }
 
     suspend fun saveUploadProject(value: Boolean?) {

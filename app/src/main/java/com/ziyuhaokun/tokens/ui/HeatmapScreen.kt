@@ -48,13 +48,16 @@ enum class YearMetric(val label: String) {
     TOKENS("Tokens"),
 }
 
-/** 热力色阶：单色系，越亮用得越多。空 = 一条极淡的底。 */
-private val HeatEmpty = Color(0xFF202329)
-private val HeatRamp = listOf(
-    Color(0xFF33373E),
-    Color(0xFF545A63),
-    Color(0xFF868D97),
-    Color(0xFFF2F3F5),
+/**
+ * 热力色阶：从主题正文色派生，深色下是「灰 → 白」，浅色下是「浅灰 → 近黑」。
+ * 不写死两套色值，浅色主题里也不会出现看不见的白块。
+ */
+private fun heatRamp(colors: TokensColors): List<Color> = listOf(
+    colors.text.copy(alpha = 0.20f),
+    colors.text.copy(alpha = 0.38f),
+    colors.text.copy(alpha = 0.62f),
+    // 最亮一档跟随强调色：单色时就是正文色，和原来完全一致。
+    colors.accent,
 )
 
 @Composable
@@ -148,6 +151,9 @@ private fun YearHero(data: YearData, metric: YearMetric) {
 private fun HeatCard(data: YearData, metric: YearMetric, onMetric: (YearMetric) -> Unit) {
     val byDate = remember(data) { data.days.associateBy { it.date } }
     val thresholds = remember(data, metric) { thresholds(data, metric) }
+    val colors = LocalTokensColors.current
+    val ramp = remember(colors) { heatRamp(colors) }
+    val empty = colors.hairlineSoft
     var selected by remember { mutableStateOf<LocalDate?>(null) }
     val months = remember(data) { monthsOf(data) }
 
@@ -238,7 +244,7 @@ private fun HeatCard(data: YearData, metric: YearMetric, onMetric: (YearMetric) 
                                         .weight(1f)
                                         .height(cell)
                                         .clip(RoundedCornerShape(2.dp))
-                                        .background(if (level == 0) HeatEmpty else HeatRamp[level - 1])
+                                        .background(if (level == 0) empty else ramp[level - 1])
                                         .then(
                                             if (isSelected) Modifier.border(1.dp, Palette.Text, RoundedCornerShape(2.dp))
                                             else Modifier
@@ -261,7 +267,7 @@ private fun HeatCard(data: YearData, metric: YearMetric, onMetric: (YearMetric) 
             fontFamily = FontFamily.Monospace,
         )
         Spacer(Modifier.height(8.dp))
-        Legend(thresholds = thresholds, metric = metric)
+        Legend(thresholds = thresholds, metric = metric, empty = empty, ramp = ramp)
 
         Spacer(Modifier.height(10.dp))
         HairlineDivider()
@@ -290,13 +296,13 @@ private fun MetricSwitch(selected: YearMetric, onSelect: (YearMetric) -> Unit) {
 }
 
 @Composable
-private fun Legend(thresholds: IntArray, metric: YearMetric) {
+private fun Legend(thresholds: IntArray, metric: YearMetric, empty: Color, ramp: List<Color>) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("少", color = Palette.Faint, fontSize = 8.sp)
         Spacer(Modifier.width(5.dp))
-        Box(Modifier.width(9.dp).height(9.dp).clip(RoundedCornerShape(2.dp)).background(HeatEmpty))
+        Box(Modifier.width(9.dp).height(9.dp).clip(RoundedCornerShape(2.dp)).background(empty))
         Spacer(Modifier.width(3.dp))
-        HeatRamp.forEach { color ->
+        ramp.forEach { color ->
             Box(Modifier.width(9.dp).height(9.dp).clip(RoundedCornerShape(2.dp)).background(color))
             Spacer(Modifier.width(3.dp))
         }

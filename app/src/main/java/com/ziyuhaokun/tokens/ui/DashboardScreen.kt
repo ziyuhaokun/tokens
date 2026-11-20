@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -88,21 +89,32 @@ fun DashboardScreen(
             )
 
             Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.height(IntrinsicSize.Max),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                CacheCard(
-                    cachedInput = totals.cachedInput,
-                    tokens = totals.tokens,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
+            if (isLargeText()) {
+                // 一列放两张：大字号下并排会把数字挤到换行。
+                CacheCard(cachedInput = totals.cachedInput, tokens = totals.tokens)
+                Spacer(Modifier.height(12.dp))
                 ActivityCard(
                     activeSeconds = totals.activeSeconds,
                     sessions = totals.sessions,
                     hosts = totals.hosts,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
+            } else {
+                Row(
+                    modifier = Modifier.height(IntrinsicSize.Max),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    CacheCard(
+                        cachedInput = totals.cachedInput,
+                        tokens = totals.tokens,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    ActivityCard(
+                        activeSeconds = totals.activeSeconds,
+                        sessions = totals.sessions,
+                        hosts = totals.hosts,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
             }
 
             Spacer(Modifier.height(12.dp))
@@ -168,16 +180,35 @@ private fun HeroCard(
 
         Spacer(Modifier.height(10.dp))
 
-        Row(verticalAlignment = Alignment.Bottom) {
-            Column(modifier = Modifier.weight(1f)) {
-                BigMoney(integer = integer, decimals = decimals)
-                Spacer(Modifier.height(2.dp))
-                SmallLabel("预估费用")
-            }
-            Column(horizontalAlignment = Alignment.Start) {
+        val large = isLargeText()
+        // 大字号下金额本身不再跟着放大（不然一行放不下），正文照常放大。
+        val moneySize = when {
+            !large -> 42
+            LocalFontScale.current >= 1.3f -> 30
+            else -> 36
+        }
+        if (large) {
+            BigMoney(integer = integer, decimals = decimals, size = moneySize)
+            Spacer(Modifier.height(2.dp))
+            SmallLabel("预估费用")
+            Spacer(Modifier.height(12.dp))
+            Row {
                 StatPair("Token", Fmt.tokens(totals.tokens))
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.width(18.dp))
                 StatPair("活跃", Fmt.duration(totals.activeSeconds))
+            }
+        } else {
+            Row(verticalAlignment = Alignment.Bottom) {
+                Column(modifier = Modifier.weight(1f)) {
+                    BigMoney(integer = integer, decimals = decimals, size = moneySize)
+                    Spacer(Modifier.height(2.dp))
+                    SmallLabel("预估费用")
+                }
+                Column(horizontalAlignment = Alignment.Start) {
+                    StatPair("Token", Fmt.tokens(totals.tokens))
+                    Spacer(Modifier.height(6.dp))
+                    StatPair("活跃", Fmt.duration(totals.activeSeconds))
+                }
             }
         }
 
@@ -242,9 +273,11 @@ private fun ActivityCard(
         Text(
             text = Fmt.duration(activeSeconds),
             color = Palette.Text,
-            fontSize = 30.sp,
+            fontSize = if (isLargeText()) 24.sp else 30.sp,
             fontWeight = FontWeight.Light,
             letterSpacing = (-0.5).sp,
+            maxLines = 1,
+            softWrap = false,
         )
         Spacer(Modifier.height(2.dp))
         SmallLabel("生成耗时合计")
