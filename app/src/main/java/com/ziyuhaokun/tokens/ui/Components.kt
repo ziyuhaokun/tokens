@@ -61,22 +61,27 @@ fun SmallLabel(text: String, modifier: Modifier = Modifier) {
     Text(text = text, color = Palette.Dim, fontSize = 11.sp, modifier = modifier)
 }
 
-/** "$578" 大号细体 + ".22" 小号灰 —— 桌面端金额排版。 */
+/** "$578" 大号细体 + ".22" 小号灰 —— 桌面端金额排版。
+ *
+ * 两段必须对齐**基线**（alignByBaseline），不能用 Alignment.Bottom：
+ * 底边对齐的是两个文字盒子的底，字号差一半时小字会整体沉到基线下。 */
 @Composable
 fun BigMoney(integer: String, decimals: String, modifier: Modifier = Modifier, size: Int = 42) {
-    Row(modifier = modifier, verticalAlignment = Alignment.Bottom) {
+    Row(modifier = modifier) {
         Text(
             text = integer,
             color = Palette.Text,
             fontSize = size.sp,
             fontWeight = FontWeight.Light,
             letterSpacing = (-1).sp,
+            modifier = Modifier.alignByBaseline(),
         )
         Text(
             text = decimals,
             color = Palette.Muted,
             fontSize = (size * 0.5).sp,
             fontWeight = FontWeight.Light,
+            modifier = Modifier.alignByBaseline(),
         )
     }
 }
@@ -101,6 +106,73 @@ fun StatPair(label: String, value: String, valueColor: androidx.compose.ui.graph
             maxLines = 1,
             softWrap = false,
         )
+    }
+}
+
+/** 一级视图。目前两个，以后加「明细」直接往这里加。 */
+enum class AppTab(val label: String) {
+    OVERVIEW("概览"),
+    YEAR("热力"),
+}
+
+/**
+ * 标题行：左边 Tokens + 账号，右边一级视图切换 + 设置。
+ * 两个页面共用，切页时标题不会跳。
+ */
+@Composable
+fun ScreenHeader(
+    subtitle: String,
+    tab: AppTab,
+    onTab: (AppTab) -> Unit,
+    onSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Tokens", color = Palette.Text, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+            Text(
+                text = subtitle,
+                color = Palette.Dim,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
+        AppTabSwitch(selected = tab, onSelect = onTab)
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "设置",
+            color = Palette.Muted,
+            fontSize = 12.sp,
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onSettings)
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+        )
+    }
+}
+
+@Composable
+private fun AppTabSwitch(selected: AppTab, onSelect: (AppTab) -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(9.dp))
+            .background(Palette.Field)
+            .padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        AppTab.entries.forEach { entry ->
+            val isOn = entry == selected
+            Text(
+                text = entry.label,
+                color = if (isOn) Palette.Text else Palette.Dim,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(if (isOn) Palette.CardTop else androidx.compose.ui.graphics.Color.Transparent)
+                    .clickable { if (!isOn) onSelect(entry) }
+                    .padding(horizontal = 9.dp, vertical = 5.dp),
+            )
+        }
     }
 }
 

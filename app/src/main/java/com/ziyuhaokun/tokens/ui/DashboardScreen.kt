@@ -36,6 +36,8 @@ import com.ziyuhaokun.tokens.data.UsageAgg
 @Composable
 fun DashboardScreen(
     state: DashboardState,
+    tab: AppTab,
+    onTab: (AppTab) -> Unit,
     onRange: (Range) -> Unit,
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
@@ -51,27 +53,13 @@ fun DashboardScreen(
     ) {
         Spacer(Modifier.height(14.dp))
 
-        // 顶部：标题 + 右侧纯文字入口（和桌面端一致）
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Tokens", color = Palette.Text, fontSize = 18.sp, fontWeight = FontWeight.Medium)
-                Text(
-                    text = usage?.accountHandle ?: "vibecafe.ai",
-                    color = Palette.Dim,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-            Text(
-                text = "设置",
-                color = Palette.Muted,
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onSettings)
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-            )
-        }
+        // 顶部：标题 + 一级视图切换 + 设置（两个页面共用同一个头）
+        ScreenHeader(
+            subtitle = usage?.accountHandle ?: "vibecafe.ai",
+            tab = tab,
+            onTab = onTab,
+            onSettings = onSettings,
+        )
 
         Spacer(Modifier.height(16.dp))
         RangeTabs(selected = state.range, onSelect = onRange)
@@ -312,7 +300,7 @@ private fun RankingCard(
 }
 
 @Composable
-private fun ErrorCard(message: String, staleAt: Long?) {
+internal fun ErrorCard(message: String, staleAt: Long?) {
     SoftCard(contentPadding = 14) {
         Text(text = message, color = Palette.Warn, fontSize = 12.sp)
         if (staleAt != null) {
@@ -328,7 +316,7 @@ private fun ErrorCard(message: String, staleAt: Long?) {
 }
 
 @Composable
-private fun EmptyCard(loading: Boolean) {
+internal fun EmptyCard(loading: Boolean) {
     SoftCard(contentPadding = 20) {
         Text(
             text = if (loading) "正在拉取…" else "没有数据",
@@ -345,7 +333,7 @@ private fun EmptyCard(loading: Boolean) {
 }
 
 @Composable
-private fun Footer(fetchedAt: Long?, stale: Boolean, loading: Boolean, onRefresh: () -> Unit) {
+internal fun Footer(fetchedAt: Long?, stale: Boolean, loading: Boolean, onRefresh: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier

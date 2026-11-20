@@ -136,7 +136,7 @@ private fun MoneyBlock(label: String, value: Double, modifier: GlanceModifier) {
 private fun Bars(values: List<Double>) {
     val max = (values.maxOrNull() ?: 0.0).takeIf { it > 0.0 } ?: 1.0
     Row(
-        modifier = GlanceModifier.fillMaxWidth().height(26.dp),
+        modifier = GlanceModifier.fillMaxWidth().height(28.dp),
         verticalAlignment = Alignment.Bottom,
     ) {
         if (values.isEmpty()) {
@@ -148,14 +148,14 @@ private fun Bars(values: List<Double>) {
             ) {}
         } else {
             values.forEach { value ->
-                val heightDp = (2 + (value / max) * 22).toInt().coerceIn(2, 24)
+                val heightDp = (2 + (value / max) * 24).toInt().coerceIn(2, 26)
                 Box(
                     modifier = GlanceModifier
                         .defaultWeight()
-                        .padding(horizontal = 1.dp)
+                        .padding(horizontal = 2.dp)
                         .height(heightDp.dp)
-                        .cornerRadius(2.dp)
-                        .background(ColorProvider(if (value > 0) BarActive.copy(alpha = 0.75f) else BarIdle)),
+                        .cornerRadius(3.dp)
+                        .background(ColorProvider(if (value > 0) BarActive.copy(alpha = 0.9f) else BarIdle)),
                 ) {}
             }
         }

@@ -81,16 +81,21 @@ class SettingsStore(private val context: Context) {
         }
     }
 
-    suspend fun writeCache(range: Range, json: String, fetchedAt: Long) {
+    suspend fun writeCache(range: Range, json: String, fetchedAt: Long) = writeCache(range.id, json, fetchedAt)
+
+    /** 按任意 key 缓存：热力图的整年数据不是五个 Range 之一。 */
+    suspend fun writeCache(id: String, json: String, fetchedAt: Long) {
         context.tokensCacheStore.edit { prefs ->
-            prefs[Keys.cacheJson(range.id)] = json
-            prefs[Keys.cacheAt(range.id)] = fetchedAt
+            prefs[Keys.cacheJson(id)] = json
+            prefs[Keys.cacheAt(id)] = fetchedAt
         }
     }
 
-    suspend fun readCache(range: Range): CacheEntry? {
+    suspend fun readCache(range: Range): CacheEntry? = readCache(range.id)
+
+    suspend fun readCache(id: String): CacheEntry? {
         val prefs = context.tokensCacheStore.data.first()
-        val json = prefs[Keys.cacheJson(range.id)] ?: return null
-        return CacheEntry(json, prefs[Keys.cacheAt(range.id)] ?: 0L)
+        val json = prefs[Keys.cacheJson(id)] ?: return null
+        return CacheEntry(json, prefs[Keys.cacheAt(id)] ?: 0L)
     }
 }

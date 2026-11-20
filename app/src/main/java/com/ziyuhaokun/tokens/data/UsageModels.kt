@@ -33,6 +33,8 @@ data class Session(
     val source: String,
     val project: String,
     val activeSeconds: Long,
+    /** 会话开始时间（毫秒）。服务端没给就为 0：热力图就没法按天摆放它。 */
+    val startMillis: Long = 0L,
 )
 
 data class UsageNames(
@@ -67,6 +69,7 @@ data class Usage(
                         source = it.optString("source"),
                         project = it.optString("project", "unknown").ifBlank { "unknown" },
                         activeSeconds = it.optLong("activeSeconds", 0L),
+                        startMillis = it.optString("firstMessageAt").toEpochMillis(),
                     )
                 },
                 hasAnyData = root.optBoolean("hasAnyData", false),
@@ -88,6 +91,14 @@ data class Usage(
                     optJSONObject(i)?.let { o -> runCatching { add(map(o)) } }
                 }
             }
+        }
+
+        /** "2026-11-20T09:55:00.000Z" 或带偏移的 ISO 都能吃，解析不了就当没有。 */
+        private fun String.toEpochMillis(): Long {
+            if (isBlank()) return 0L
+            return runCatching { OffsetDateTime.parse(this).toInstant().toEpochMilli() }
+                .recoverCatching { java.time.Instant.parse(this).toEpochMilli() }
+                .getOrDefault(0L)
         }
 
         private fun JSONObject?.stringMap(): Map<String, String> {

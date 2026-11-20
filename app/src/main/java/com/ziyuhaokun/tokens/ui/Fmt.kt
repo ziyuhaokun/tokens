@@ -19,6 +19,19 @@ object Fmt {
         else -> value.toString()
     }
 
+    /**
+     * Token 量拆成「整数」+「小数与单位」两段，给大号数字排版用。
+     * "123.36B" → ("123", ".36B")；小于 1000 时没有单位，后半段为空。
+     * 不能直接 substringBefore('.')：那样会把小数和单位一起丢掉。
+     */
+    fun tokensParts(value: Long): Pair<String, String> {
+        val text = tokens(value)
+        val dot = text.indexOf('.')
+        if (dot >= 0) return text.substring(0, dot) to text.substring(dot)
+        val unit = text.lastOrNull()?.takeIf { it.isLetter() }
+        return if (unit != null) text.dropLast(1) to unit.toString() else text to ""
+    }
+
     /** "3h 12m" 这种，没有整点就只有分钟。 */
     fun duration(seconds: Long): String {
         val totalMinutes = (seconds / 60).toInt()

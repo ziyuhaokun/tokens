@@ -2,4 +2,6 @@
 <resources>
     <color name="bg">#FF0A0B0D</color>
     <color name="accent">#FF7AA2FF</color>
+    <!-- 图标底：近白，与黑色标记形成高对比（参考 Toknix 风格） -->
+    <color name="ic_launcher_background">#FFF6F6F7</color>
 </resources>
