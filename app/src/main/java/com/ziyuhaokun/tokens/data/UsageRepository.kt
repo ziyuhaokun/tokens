@@ -1,8 +1,6 @@
 package com.ziyuhaokun.tokens.data
 
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.withContext
 import java.time.ZoneId
 
 data class Snapshot(
@@ -23,8 +21,11 @@ class UsageRepository(
     private val cache: UsageCache,
     private val deviceLogin: DeviceLoginApi = DeviceLoginApi(),
 ) {
-    /** 退出登录 / 换账号时 +1，在飞的刷新回来后不再写缓存，防止旧账号数据被写回。 */
-    @Volatile private var cacheGeneration = 0
+    private val fetches = UsageFetchCoordinator(
+        fetch = api::fetch,
+        readCache = cache::read,
+        writeCache = cache::write,
+    )
 
     val settings: Flow<StoredSettings> = store.data
 
@@ -54,7 +55,7 @@ class UsageRepository(
             return e.message ?: "验证失败"
         }
         // 换账号/改地址后，之前带着旧凭据在飞的请求一律不许再落缓存。
-        cacheGeneration++
+        fetches.invalidate()
         return if (store.saveCredentials(key, url)) null else "Key 加密保存失败（Keystore 不可用）"
     }
 
@@ -67,31 +68,23 @@ class UsageRepository(
 
     /** 退出：清 key + 清掉全部缓存（不留上一个账号的数字）。 */
     suspend fun signOut() {
-        cacheGeneration++
+        fetches.invalidate()
         store.clearCredentials()
         cache.clearAll()
     }
 
+    /** 当前时间范围会影响下次拉哪一档，留在用量仓库里。外观设置直接走 [SettingsStore]。 */
     suspend fun saveRange(range: Range) = store.saveRange(range)
 
-    suspend fun saveThemeMode(mode: ThemeMode) = store.saveThemeMode(mode)
-    suspend fun saveAccent(accent: AccentChoice) = store.saveAccent(accent)
-    suspend fun saveFontScale(choice: FontScaleChoice) = store.saveFontScale(choice)
-    suspend fun saveMotion(enabled: Boolean) = store.saveMotion(enabled)
-    suspend fun saveCurrency(choice: CurrencyChoice) = store.saveCurrency(choice)
-    suspend fun saveCnyPerUsd(rate: Double): Boolean = store.saveCnyPerUsd(rate)
-    suspend fun saveUnits(style: UnitStyle) = store.saveUnits(style)
-    suspend fun saveReceiptStyle(style: ReceiptStyle) = store.saveReceiptStyle(style)
-    suspend fun saveReceiptLanguage(language: ReceiptLanguage) = store.saveReceiptLanguage(language)
     suspend fun clearCache() = cache.clearAll()
 
     /** 先网络、失败回退缓存：网络失败也能看到上次的数据 + 时间戳。 */
     suspend fun load(range: Range, settings: StoredSettings): Snapshot =
-        fetchWithFallback(settings, range.cacheId, range.params())
+        fetches.load(settings, range.cacheId, range.params())
 
     /** 只读缓存，不发请求。没配 key 或没有缓存时返回 null。 */
     suspend fun cached(range: Range, settings: StoredSettings): Snapshot? =
-        cachedSnapshot(settings, range.cacheId)
+        fetches.cached(settings, range.cacheId)
 
     /**
      * 整年热力图：一次拿完，不分段。服务端接受任意 from/to 区间
@@ -100,11 +93,11 @@ class UsageRepository(
     suspend fun loadYear(settings: StoredSettings, zone: ZoneId = ZoneId.systemDefault()): Snapshot {
         // 和首页 365D 用同一段区间、同一份缓存（Range.D365.cacheId == YEAR_CACHE_KEY）。
         val params = Range.dateWindow(YearAgg.DAYS, zone)
-        return fetchWithFallback(settings, YEAR_CACHE_KEY, params, zone)
+        return fetches.load(settings, YEAR_CACHE_KEY, params, zone)
     }
 
     suspend fun cachedYear(settings: StoredSettings, zone: ZoneId = ZoneId.systemDefault()): Snapshot? =
-        cachedSnapshot(settings, YEAR_CACHE_KEY, zone)
+        fetches.cached(settings, YEAR_CACHE_KEY, zone)
 
     /** 小组件用的两份数据：今天 + 7 天。一个失败不影响另一个。 */
     suspend fun refreshForWidget(): RefreshOutcome {
@@ -122,55 +115,6 @@ class UsageRepository(
     suspend fun readCacheRaw(range: Range, settings: StoredSettings): CacheEntry? {
         val scope = settings.cacheScope ?: return null
         return cache.read(scope, range.cacheId)
-    }
-
-    private suspend fun fetchWithFallback(
-        settings: StoredSettings,
-        cacheId: String,
-        params: Map<String, String>,
-        zone: ZoneId = ZoneId.systemDefault(),
-    ): Snapshot {
-        val key = settings.apiKey
-        val scope = settings.cacheScope
-        if (key.isNullOrBlank() || scope == null) {
-            return Snapshot(null, null, "未配置 API Key", false)
-        }
-
-        val generation = cacheGeneration
-        return try {
-            val usage = api.fetch(settings.baseUrl, key, params, zone)
-            val at = System.currentTimeMillis()
-            // 退出登录 / 换账号期间完成的旧请求直接丢弃，别把上一个账号的数字写回来。
-            if (cacheGeneration == generation) cache.write(scope, cacheId, usage.rawJson, at)
-            Snapshot(usage, at, null, false)
-        } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // 网络失败才去解析缓存：成功路径上不白白多解析一份几百 KB 的 JSON。
-            val fallback = cachedSnapshot(settings, cacheId, zone)
-            Snapshot(
-                usage = fallback?.usage,
-                fetchedAt = fallback?.fetchedAt,
-                error = e.message ?: "未知错误",
-                fromCache = fallback != null,
-                // 429 没有官方 Retry-After 解析需求：交给下一个 30 分钟周期即可，不要指数退避无限重试。
-                unauthorized = e is UsageApiException.Unauthorized ||
-                    (e is UsageApiException.Http && e.code == 429),
-            )
-        }
-    }
-
-    private suspend fun cachedSnapshot(
-        settings: StoredSettings,
-        cacheId: String,
-        zone: ZoneId = ZoneId.systemDefault(),
-    ): Snapshot? {
-        val scope = settings.cacheScope ?: return null
-        val entry = cache.read(scope, cacheId) ?: return null
-        val usage = withContext(Dispatchers.Default) {
-            runCatching { Usage.parse(entry.json, zone) }.getOrNull()
-        } ?: return null
-        return Snapshot(usage, entry.fetchedAt, null, true)
     }
 
     companion object {

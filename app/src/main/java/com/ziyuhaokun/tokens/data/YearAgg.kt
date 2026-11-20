@@ -99,3 +99,38 @@ object YearAgg {
         )
     }
 }
+
+/** 热力图看哪个指标。色阶按这个切，不按界面上的文案。 */
+enum class YearMetric(val label: String) {
+    COST("费用"),
+    TOKENS("Tokens"),
+}
+
+/**
+ * 用非零日的分位数当色阶阈值：不同账号的量级差几个数量级，固定阈值会一片死黑。
+ *
+ * 阈值必须是 Double：取整会把 $0.3 和 $1.9 压成同一档，小额日全都一个颜色。
+ */
+internal fun thresholds(data: YearData, metric: YearMetric): DoubleArray {
+    val values = data.days.map { valueOf(it, metric) }.filter { it > 0.0 }.sorted()
+    if (values.isEmpty()) return doubleArrayOf(0.0, 0.0, 0.0)
+    fun at(p: Double): Double = values[((values.size - 1) * p).toInt()]
+    return doubleArrayOf(at(0.4), at(0.7), at(0.9))
+}
+
+internal fun levelOf(day: DayUsage?, metric: YearMetric, thresholds: DoubleArray): Int {
+    if (day == null || !day.hasUsage) return 0
+    val value = valueOf(day, metric)
+    return when {
+        value <= thresholds[0] -> 1
+        value <= thresholds[1] -> 2
+        value <= thresholds[2] -> 3
+        else -> 4
+    }
+}
+
+private fun valueOf(day: DayUsage?, metric: YearMetric): Double =
+    when (metric) {
+        YearMetric.COST -> day?.cost ?: 0.0
+        YearMetric.TOKENS -> (day?.tokens ?: 0L).toDouble()
+    }

@@ -108,7 +108,7 @@ class MainActivity : ComponentActivity() {
                 if (snapshot != null) return
                 val motion = stored?.motion ?: true
                 if (!motion) {
-                    scope.launch { container.repository.saveThemeMode(mode) }
+                    scope.launch { container.settings.saveThemeMode(mode) }
                     return
                 }
                 scope.launch {
@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                         withFrameNanos { }
                     }
                     themeOverride = mode
-                    container.repository.saveThemeMode(mode)
+                    container.settings.saveThemeMode(mode)
                     if (shot != null) {
                         revealRadius.animateTo(
                             targetValue = farthestCornerDistance(revealCenter, canvasSize),
@@ -273,14 +273,14 @@ class MainActivity : ComponentActivity() {
                                                 onBack = ::closeSettings,
                                                 onThemeMode = { mode -> switchTheme(mode, at = null) },
                                                 onThemeModeAt = { mode, at -> switchTheme(mode, at) },
-                                                onAccent = { scope.launch { container.repository.saveAccent(it) } },
-                                                onFontScale = { scope.launch { container.repository.saveFontScale(it) } },
-                                                onMotion = { scope.launch { container.repository.saveMotion(it) } },
-                                                onCurrency = { scope.launch { container.repository.saveCurrency(it) } },
-                                                onCnyPerUsd = { scope.launch { container.repository.saveCnyPerUsd(it) } },
-                                                onUnits = { scope.launch { container.repository.saveUnits(it) } },
-                                                onReceiptStyle = { scope.launch { container.repository.saveReceiptStyle(it) } },
-                                                onReceiptLanguage = { scope.launch { container.repository.saveReceiptLanguage(it) } },
+                                                onAccent = { scope.launch { container.settings.saveAccent(it) } },
+                                                onFontScale = { scope.launch { container.settings.saveFontScale(it) } },
+                                                onMotion = { scope.launch { container.settings.saveMotion(it) } },
+                                                onCurrency = { scope.launch { container.settings.saveCurrency(it) } },
+                                                onCnyPerUsd = { scope.launch { container.settings.saveCnyPerUsd(it) } },
+                                                onUnits = { scope.launch { container.settings.saveUnits(it) } },
+                                                onReceiptStyle = { scope.launch { container.settings.saveReceiptStyle(it) } },
+                                                onReceiptLanguage = { scope.launch { container.settings.saveReceiptLanguage(it) } },
                                                 onPreviewReceipt = ::printReceipt,
                                                 canPinWidget = remember { container.widgetSync.canPin() },
                                                 onPinWidget = container.widgetSync::pin,
