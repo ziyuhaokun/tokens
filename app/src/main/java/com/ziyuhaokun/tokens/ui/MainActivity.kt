@@ -2,12 +2,15 @@ package com.ziyuhaokun.tokens.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -22,6 +25,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ziyuhaokun.tokens.AppContainer
 import com.ziyuhaokun.tokens.data.AccentChoice
@@ -33,6 +37,7 @@ import com.ziyuhaokun.tokens.data.ReceiptLanguage
 import com.ziyuhaokun.tokens.data.ReceiptStyle
 import com.ziyuhaokun.tokens.data.Usage
 import com.ziyuhaokun.tokens.data.ThemeMode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -99,8 +104,6 @@ class MainActivity : ComponentActivity() {
                     }
 
                     // 设置页不是独立 Activity：系统返回键要自己接住，否则会直接退出 App。
-                    BackHandler(enabled = showSettings && state.configured) { closeSettings() }
-
                     Box(Modifier.fillMaxSize()) {
                         when {
                             !state.ready -> Box(Modifier.fillMaxSize().background(Palette.Bg))
@@ -113,37 +116,6 @@ class MainActivity : ComponentActivity() {
                                 onLogin = viewModel::startBrowserLogin,
                                 onCancelLogin = viewModel::cancelBrowserLogin,
                                 onSave = viewModel::saveCredentials,
-                            )
-
-                            showSettings -> SettingsScreen(
-                                settings = stored,
-                                versionName = versionName,
-                                onBack = ::closeSettings,
-                                onThemeMode = { scope.launch { container.repository.saveThemeMode(it) } },
-                                onAccent = { scope.launch { container.repository.saveAccent(it) } },
-                                onFontScale = { scope.launch { container.repository.saveFontScale(it) } },
-                                onMotion = { scope.launch { container.repository.saveMotion(it) } },
-                                // 货币 / 单位变了，小组件也要跟着重画（它跟着设置流走，这里不用额外处理）。
-                                onCurrency = { scope.launch { container.repository.saveCurrency(it) } },
-                                onCnyPerUsd = { scope.launch { container.repository.saveCnyPerUsd(it) } },
-                                onUnits = { scope.launch { container.repository.saveUnits(it) } },
-                                onReceiptStyle = { scope.launch { container.repository.saveReceiptStyle(it) } },
-                                onReceiptLanguage = { scope.launch { container.repository.saveReceiptLanguage(it) } },
-                                onPreviewReceipt = ::printReceipt,
-                                canPinWidget = remember { container.widgetSync.canPin() },
-                                onPinWidget = container.widgetSync::pin,
-                                // key 留空 = 只改服务器地址，用旧 key 在新地址上验证。
-                                onSignOut = {
-                                    viewModel.signOut()
-                                    closeSettings()
-                                },
-                                onClearCache = {
-                                    // 先清完再刷新，不然新拉到的数据可能被后执行的清理删掉。
-                                    scope.launch {
-                                        container.repository.clearCache()
-                                        refreshEverything()
-                                    }
-                                },
                             )
 
                             else -> {
@@ -175,11 +147,45 @@ class MainActivity : ComponentActivity() {
                                         )
                                     }
                                 }
-                                // 动态效果开关：关掉就硬切，不做淡入。
-                                if (motion) {
-                                    Crossfade(targetState = tab, label = "tab") { content(it) }
-                                } else {
-                                    content(tab)
+                                Box(Modifier.fillMaxSize()) {
+                                    // 动态效果开关：关掉就硬切，不做淡入。
+                                    if (motion) {
+                                        Crossfade(targetState = tab, label = "tab") { content(it) }
+                                    } else {
+                                        content(tab)
+                                    }
+                                    // 设置页盖在首页上面：下层页面保持在场，返回手势才有可预览的目标。
+                                    if (showSettings) {
+                                        SettingsOverlay(onDismiss = ::closeSettings) {
+                                            SettingsScreen(
+                                                settings = stored,
+                                                versionName = versionName,
+                                                onBack = ::closeSettings,
+                                                onThemeMode = { scope.launch { container.repository.saveThemeMode(it) } },
+                                                onAccent = { scope.launch { container.repository.saveAccent(it) } },
+                                                onFontScale = { scope.launch { container.repository.saveFontScale(it) } },
+                                                onMotion = { scope.launch { container.repository.saveMotion(it) } },
+                                                onCurrency = { scope.launch { container.repository.saveCurrency(it) } },
+                                                onCnyPerUsd = { scope.launch { container.repository.saveCnyPerUsd(it) } },
+                                                onUnits = { scope.launch { container.repository.saveUnits(it) } },
+                                                onReceiptStyle = { scope.launch { container.repository.saveReceiptStyle(it) } },
+                                                onReceiptLanguage = { scope.launch { container.repository.saveReceiptLanguage(it) } },
+                                                onPreviewReceipt = ::printReceipt,
+                                                canPinWidget = remember { container.widgetSync.canPin() },
+                                                onPinWidget = container.widgetSync::pin,
+                                                onSignOut = {
+                                                    viewModel.signOut()
+                                                    closeSettings()
+                                                },
+                                                onClearCache = {
+                                                    scope.launch {
+                                                        container.repository.clearCache()
+                                                        refreshEverything()
+                                                    }
+                                                },
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -198,6 +204,50 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+/**
+ * 设置页浮层：左上角的返回按钮、系统返回键和返回手势都走同一条退出路径。
+ *
+ * 用 [PredictiveBackHandler] 而不是 BackHandler：手指从屏幕边缘往回拖时，
+ * 页面会跟着手势右移、缩小，松手前就能看到「回到首页」的预览，不会一按就突然消失。
+ */
+@Composable
+private fun SettingsOverlay(onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    val motion = LocalMotionEnabled.current
+    // 1 = 完全打开，0 = 完全退回。进场时从 0 长到 1，返回手势时跟着手指走。
+    val reveal = remember { Animatable(if (motion) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (motion) reveal.animateTo(1f, tween(durationMillis = 220, easing = FastOutSlowInEasing))
+    }
+
+    PredictiveBackHandler(enabled = true) { events ->
+        try {
+            events.collect { event -> reveal.snapTo((1f - event.progress).coerceIn(0f, 1f)) }
+            if (motion) reveal.animateTo(0f, tween(durationMillis = 120)) else reveal.snapTo(0f)
+            onDismiss()
+        } catch (e: CancellationException) {
+            // 手势取消：弹回完全打开。
+            if (motion) reveal.animateTo(1f, tween(durationMillis = 180)) else reveal.snapTo(1f)
+            throw e
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                val back = 1f - reveal.value
+                // 只位移四分之一屏：拖到底时首页已经露出来，又不会把设置页甩出屏幕。
+                translationX = size.width * 0.25f * back
+                alpha = 1f - 0.35f * back
+                val shrink = 1f - 0.04f * back
+                scaleX = shrink
+                scaleY = shrink
+            },
+    ) {
+        content()
+    }
+}
 
     private fun applySystemBars(dark: Boolean) {
         enableEdgeToEdge(
