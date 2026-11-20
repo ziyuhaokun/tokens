@@ -95,6 +95,8 @@ fun CredentialsForm(
     error: String?,
     saveLabel: String,
     onSave: (String, String) -> Unit,
+    /** true：key 可以留空，表示沿用已保存的 key（设置页只改服务器地址的场景）。 */
+    allowBlankKey: Boolean = false,
     onCancel: (() -> Unit)? = null,
     onSignOut: (() -> Unit)? = null,
 ) {
@@ -107,7 +109,9 @@ fun CredentialsForm(
             value = key,
             onValueChange = { key = it.trim() },
             label = { Text("API Key", fontSize = 11.sp) },
-            placeholder = { Text("vbu_…", color = Palette.Faint, fontSize = 13.sp) },
+            placeholder = {
+                Text(if (allowBlankKey) "留空 = 沿用当前 key" else "vbu_…", color = Palette.Faint, fontSize = 13.sp)
+            },
             singleLine = true,
             enabled = !saving,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
@@ -145,7 +149,7 @@ fun CredentialsForm(
         Spacer(Modifier.height(16.dp))
         Button(
             onClick = { onSave(key, url.ifBlank { DEFAULT_BASE_URL }) },
-            enabled = !saving && key.isNotBlank(),
+            enabled = !saving && (allowBlankKey || key.isNotBlank()),
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
             colors = ButtonDefaults.buttonColors(

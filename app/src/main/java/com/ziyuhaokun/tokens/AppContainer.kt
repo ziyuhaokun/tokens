@@ -3,14 +3,18 @@ package com.ziyuhaokun.tokens
 import android.content.Context
 import com.ziyuhaokun.tokens.data.SettingsStore
 import com.ziyuhaokun.tokens.data.UsageApi
+import com.ziyuhaokun.tokens.data.UsageCache
 import com.ziyuhaokun.tokens.data.UsageRepository
+import com.ziyuhaokun.tokens.widget.WidgetSync
 
-/** 手动注入，不上 DI 框架：这个 App 只有三个对象。 */
+/** 手动注入，不上 DI 框架：这个 App 只有这几个对象。 */
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
     val settings = SettingsStore(appContext)
+    val cache = UsageCache(appContext)
     val api = UsageApi()
-    val repository = UsageRepository(api, settings)
+    val repository = UsageRepository(api, settings, cache)
+    val widgetSync = WidgetSync(appContext)
 
     companion object {
         @Volatile

@@ -16,6 +16,7 @@ class TokensApp : Application() {
         AppContainer.init(this)
         val container = AppContainer.get(this)
         appScope.launch {
+            container.cache.dropLegacy()
             val settings = container.settings.snapshot()
             if (settings.configured) RefreshScheduler.schedule(this@TokensApp) else RefreshScheduler.cancel(this@TokensApp)
         }

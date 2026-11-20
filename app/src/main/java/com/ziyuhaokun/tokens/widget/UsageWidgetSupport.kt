@@ -14,6 +14,8 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.ziyuhaokun.tokens.AppContainer
+import com.ziyuhaokun.tokens.data.RefreshOutcome
 import java.util.concurrent.TimeUnit
 
 class UsageWidgetReceiver : GlanceAppWidgetReceiver() {
@@ -23,7 +25,7 @@ class UsageWidgetReceiver : GlanceAppWidgetReceiver() {
 /** 点小组件右上角「刷新」：立即抓一次、写缓存、重绘，不走 WorkManager 的 15 分钟节流。 */
 class RefreshAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
-        WidgetData.refresh(context)
+        AppContainer.get(context).repository.refreshForWidget()
         UsageWidget().updateAll(context)
     }
 }
@@ -33,9 +35,14 @@ class UsageRefreshWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        val ok = WidgetData.refresh(applicationContext)
+        val outcome = AppContainer.get(applicationContext).repository.refreshForWidget()
         UsageWidget().updateAll(applicationContext)
-        return if (ok) Result.success() else Result.retry()
+        return when (outcome) {
+            RefreshOutcome.OK -> Result.success()
+            // 没 key / key 失效：重试也没用，等用户在 App 里重新配置。
+            RefreshOutcome.NOT_CONFIGURED, RefreshOutcome.UNAUTHORIZED -> Result.success()
+            RefreshOutcome.FAILED -> Result.retry()
+        }
     }
 }
 
@@ -57,5 +64,18 @@ object RefreshScheduler {
 
     fun cancel(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+    }
+}
+
+/** 账号状态变化后统一收尾：排 / 撤后台任务，并让小组件重画。 */
+class WidgetSync(private val context: Context) {
+
+    suspend fun onCredentialsChanged(configured: Boolean) {
+        if (configured) RefreshScheduler.schedule(context) else RefreshScheduler.cancel(context)
+        redraw()
+    }
+
+    suspend fun redraw() {
+        runCatching { UsageWidget().updateAll(context) }
     }
 }

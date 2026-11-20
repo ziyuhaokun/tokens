@@ -5,19 +5,17 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 val DEFAULT_BASE_URL = "https://vibecafe.ai"
 
 private val Context.tokensDataStore: DataStore<Preferences> by preferencesDataStore(name = "tokens")
-
-// 缓存单独一个 DataStore：设置流只关心身份/范围变化，缓存写入不应该触发它。
-private val Context.tokensCacheStore: DataStore<Preferences> by preferencesDataStore(name = "tokens-cache")
 
 data class StoredSettings(
     val apiKey: String?,
@@ -31,9 +29,12 @@ data class StoredSettings(
     val motion: Boolean = true,
 ) {
     val configured: Boolean get() = !apiKey.isNullOrBlank()
-}
 
-data class CacheEntry(val json: String, val fetchedAt: Long)
+    /** 缓存作用域：没配 key 时为 null，此时不读不写任何缓存。 */
+    val cacheScope: String? by lazy {
+        apiKey?.takeIf { it.isNotBlank() }?.let { UsageCache.scopeOf(baseUrl, it) }
+    }
+}
 
 class SettingsStore(private val context: Context) {
 
@@ -46,13 +47,24 @@ class SettingsStore(private val context: Context) {
         val accent = stringPreferencesKey("accent")
         val fontScale = stringPreferencesKey("font_scale")
         val motion = booleanPreferencesKey("motion")
-        fun cacheJson(id: String) = stringPreferencesKey("cache_json_$id")
-        fun cacheAt(id: String) = longPreferencesKey("cache_at_$id")
+    }
+
+    // 改主题 / 字号也会让设置流重发；密文没变就别再走一遍 Keystore 解密。
+    @Volatile private var lastBlob: String? = null
+    @Volatile private var lastKey: String? = null
+
+    private fun decryptCached(blob: String?): String? {
+        if (blob == null) return null
+        if (blob == lastBlob) return lastKey
+        val key = SecretBox.decrypt(blob)
+        lastKey = key
+        lastBlob = blob
+        return key
     }
 
     val data: Flow<StoredSettings> = context.tokensDataStore.data.map { prefs ->
         StoredSettings(
-            apiKey = prefs[Keys.apiKeyBlob]?.let { SecretBox.decrypt(it) },
+            apiKey = decryptCached(prefs[Keys.apiKeyBlob]),
             baseUrl = prefs[Keys.baseUrl]?.takeIf { it.isNotBlank() } ?: DEFAULT_BASE_URL,
             range = Range.fromId(prefs[Keys.rangeId]),
             uploadProject = prefs[Keys.uploadProject],
@@ -61,16 +73,18 @@ class SettingsStore(private val context: Context) {
             fontScale = FontScaleChoice.fromId(prefs[Keys.fontScale]),
             motion = prefs[Keys.motion] ?: true,
         )
-    }
+    }.flowOn(Dispatchers.Default)
 
     suspend fun snapshot(): StoredSettings = data.first()
 
-    suspend fun saveCredentials(apiKey: String, baseUrl: String) {
-        val blob = SecretBox.encrypt(apiKey.trim())
+    /** 返回 false 表示 Keystore 加密失败，key 没有落盘。 */
+    suspend fun saveCredentials(apiKey: String, baseUrl: String): Boolean {
+        val blob = SecretBox.encrypt(apiKey.trim()) ?: return false
         context.tokensDataStore.edit { prefs ->
-            if (blob != null) prefs[Keys.apiKeyBlob] = blob else prefs.remove(Keys.apiKeyBlob)
+            prefs[Keys.apiKeyBlob] = blob
             prefs[Keys.baseUrl] = baseUrl.trim().ifBlank { DEFAULT_BASE_URL }
         }
+        return true
     }
 
     suspend fun clearCredentials() {
@@ -104,38 +118,9 @@ class SettingsStore(private val context: Context) {
         context.tokensDataStore.edit { it[Keys.motion] = enabled }
     }
 
-    /** 清掉所有时间范围的缓存（不动身份与外观设置）。 */
-    suspend fun clearCache() {
-        val ids = Range.entries.map { it.id } + "year"
-        context.tokensCacheStore.edit { prefs ->
-            ids.forEach { id ->
-                prefs.remove(Keys.cacheJson(id))
-                prefs.remove(Keys.cacheAt(id))
-            }
-        }
-    }
-
     suspend fun saveUploadProject(value: Boolean?) {
         context.tokensDataStore.edit { prefs ->
             if (value == null) prefs.remove(Keys.uploadProject) else prefs[Keys.uploadProject] = value
         }
-    }
-
-    suspend fun writeCache(range: Range, json: String, fetchedAt: Long) = writeCache(range.id, json, fetchedAt)
-
-    /** 按任意 key 缓存：热力图的整年数据不是五个 Range 之一。 */
-    suspend fun writeCache(id: String, json: String, fetchedAt: Long) {
-        context.tokensCacheStore.edit { prefs ->
-            prefs[Keys.cacheJson(id)] = json
-            prefs[Keys.cacheAt(id)] = fetchedAt
-        }
-    }
-
-    suspend fun readCache(range: Range): CacheEntry? = readCache(range.id)
-
-    suspend fun readCache(id: String): CacheEntry? {
-        val prefs = context.tokensCacheStore.data.first()
-        val json = prefs[Keys.cacheJson(id)] ?: return null
-        return CacheEntry(json, prefs[Keys.cacheAt(id)] ?: 0L)
     }
 }

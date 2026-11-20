@@ -2,6 +2,7 @@ package com.ziyuhaokun.tokens.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -20,21 +21,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ziyuhaokun.tokens.AppContainer
 import com.ziyuhaokun.tokens.data.AccentChoice
 import com.ziyuhaokun.tokens.data.FontScaleChoice
 import com.ziyuhaokun.tokens.data.ThemeMode
-import com.ziyuhaokun.tokens.widget.RefreshScheduler
-import com.ziyuhaokun.tokens.widget.UsageWidget
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private val container by lazy { AppContainer.get(applicationContext) }
     private val viewModel: DashboardViewModel by viewModels {
-        DashboardViewModel.factory(container.repository)
+        DashboardViewModel.factory(container.repository, container.widgetSync)
     }
     private val heatmap: HeatmapViewModel by viewModels {
         HeatmapViewModel.factory(container.repository)
@@ -63,8 +61,6 @@ class MainActivity : ComponentActivity() {
                 val heatmapState by heatmap.state.collectAsStateWithLifecycle()
                 var tab by rememberSaveable { mutableStateOf(AppTab.OVERVIEW) }
                 var showSettings by rememberSaveable { mutableStateOf(false) }
-                var saving by remember { mutableStateOf(false) }
-                var saveError by remember { mutableStateOf<String?>(null) }
                 val scope = rememberCoroutineScope()
                 val motion = stored?.motion ?: true
                 val versionName = remember {
@@ -72,83 +68,67 @@ class MainActivity : ComponentActivity() {
                         .getOrNull() ?: "—"
                 }
 
-                fun afterConfigured() {
-                    saving = false
-                    saveError = null
-                    RefreshScheduler.schedule(applicationContext)
-                    scope.launch { UsageWidget().updateAll(applicationContext) }
-                }
-
                 fun refreshEverything() {
                     viewModel.refresh()
                     heatmap.refresh()
-                    scope.launch {
-                        RefreshScheduler.schedule(applicationContext)
-                        UsageWidget().updateAll(applicationContext)
-                    }
+                    scope.launch { container.widgetSync.onCredentialsChanged(configured = true) }
                 }
+
+                fun closeSettings() {
+                    showSettings = false
+                    viewModel.clearSaveError()
+                }
+
+                // 设置页不是独立 Activity：系统返回键要自己接住，否则会直接退出 App。
+                BackHandler(enabled = showSettings && state.configured) { closeSettings() }
 
                 when {
                     !state.ready -> Box(Modifier.fillMaxSize().background(Palette.Bg))
 
+                    // 先验证再保存：只有验证通过 configured 才会变 true，失败原因留在引导页上。
                     !state.configured -> SetupScreen(
-                        saving = saving,
-                        error = saveError,
-                        onSave = { key, url ->
-                            saving = true
-                            saveError = null
-                            viewModel.saveCredentials(key, url) { error ->
-                                if (error == null) afterConfigured() else {
-                                    saving = false
-                                    saveError = error
-                                }
-                            }
-                        },
+                        saving = state.saving,
+                        error = state.saveError,
+                        onSave = viewModel::saveCredentials,
                     )
 
                     showSettings -> SettingsScreen(
                         settings = stored,
                         versionName = versionName,
-                        saving = saving,
-                        saveError = saveError,
-                        onBack = { showSettings = false },
+                        saving = state.saving,
+                        saveError = state.saveError,
+                        saveCount = state.saveCount,
+                        onBack = ::closeSettings,
                         onThemeMode = { scope.launch { container.repository.saveThemeMode(it) } },
                         onAccent = { scope.launch { container.repository.saveAccent(it) } },
                         onFontScale = { scope.launch { container.repository.saveFontScale(it) } },
                         onMotion = { scope.launch { container.repository.saveMotion(it) } },
-                        onSaveCredentials = { key, url ->
-                            if (key.isBlank()) {
-                                viewModel.saveBaseUrl(url)
-                                saveError = null
-                            } else {
-                                saving = true
-                                saveError = null
-                                viewModel.saveCredentials(key, url) { error ->
-                                    if (error == null) {
-                                        afterConfigured()
-                                    } else {
-                                        saving = false
-                                        saveError = error
-                                    }
-                                }
-                            }
-                        },
+                        // key 留空 = 只改服务器地址，用旧 key 在新地址上验证。
+                        onSaveCredentials = viewModel::saveCredentials,
+                        onDismissCredentials = viewModel::clearSaveError,
                         onSignOut = {
                             viewModel.signOut()
-                            showSettings = false
-                            saveError = null
+                            closeSettings()
                         },
-                        onClearCache = { scope.launch { container.repository.clearCache() } },
+                        onClearCache = {
+                            // 先清完再刷新，不然新拉到的数据可能被后执行的清理删掉。
+                            scope.launch {
+                                container.repository.clearCache()
+                                refreshEverything()
+                            }
+                        },
                         onRefreshAll = { refreshEverything() },
                     )
 
                     else -> {
                         // 整年数据第一次切过去才拉；之后 10 分钟内复用。
                         LaunchedEffect(tab) {
-                            if (tab == AppTab.YEAR) heatmap.onShown()
+                            if (tab == AppTab.YEAR) heatmap.onShown() else heatmap.onHidden()
                         }
-                        val content: @Composable (AppTab?) -> Unit = {
-                            when (tab) {
+                        // 用 Crossfade 传进来的那一页（shown），而不是外层的 tab：
+                        // 否则淡出的那一层也会画成新页面，淡入淡出等于没做。
+                        val content: @Composable (AppTab) -> Unit = { shown ->
+                            when (shown) {
                                 AppTab.OVERVIEW -> DashboardScreen(
                                     state = state,
                                     tab = tab,
@@ -197,6 +177,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        viewModel.refresh()
+        // 冷启动时 ViewModel 已经在拉了，这里只在数据老于 1 分钟时补拉，避免重复请求。
+        viewModel.onResume()
     }
 }

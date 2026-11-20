@@ -2,6 +2,9 @@ package com.ziyuhaokun.tokens.widget
 
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -12,6 +15,7 @@ import androidx.glance.action.actionStartActivity
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
@@ -49,8 +53,14 @@ class UsageWidget : GlanceAppWidget() {
     override val sizeMode: SizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val snapshot = WidgetData.read(AppContainer.get(context).settings)
-        provideContent { Content(snapshot) }
+        val repository = AppContainer.get(context).repository
+        // 先读一次当首帧，之后设置 / 缓存一变就自动重读重画。
+        val initial = WidgetData.read(repository)
+        provideContent {
+            val flow = remember { WidgetData.observe(repository) }
+            val snapshot by flow.collectAsState(initial = initial)
+            Content(snapshot)
+        }
     }
 }
 
@@ -80,18 +90,26 @@ private fun Content(s: WidgetSnapshot) {
                     maxLines = 1,
                 )
                 Spacer(GlanceModifier.defaultWeight())
+                // 只有配了 key 才给刷新；未配置时点哪里都是进 App。
                 Text(
                     text = refreshHint(s),
                     style = TextStyle(color = ColorProvider(TextMuted), fontSize = 10.sp),
+                    modifier = if (s.configured) {
+                        GlanceModifier
+                            .clickable(actionRunCallback<RefreshAction>())
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    } else {
+                        GlanceModifier
+                    },
                 )
             }
 
             Spacer(GlanceModifier.height(12.dp))
 
             Row(modifier = GlanceModifier.fillMaxWidth()) {
-                MoneyBlock("今日", s.todayCost, GlanceModifier.defaultWeight())
+                MoneyBlock("今日", s.todayCost.takeIf { s.configured }, GlanceModifier.defaultWeight())
                 Spacer(GlanceModifier.width(14.dp))
-                MoneyBlock("7 天", s.weekCost, GlanceModifier.defaultWeight())
+                MoneyBlock("7 天", s.weekCost.takeIf { s.configured }, GlanceModifier.defaultWeight())
             }
 
             Spacer(GlanceModifier.height(6.dp))
@@ -109,11 +127,15 @@ private fun Content(s: WidgetSnapshot) {
 }
 
 @Composable
-private fun MoneyBlock(label: String, value: Double, modifier: GlanceModifier) {
-    val text = String.format(Locale.US, "%.2f", value)
-    val dot = text.indexOf('.')
-    val integer = "$" + text.substring(0, dot)
-    val decimals = text.substring(dot)
+private fun MoneyBlock(label: String, value: Double?, modifier: GlanceModifier) {
+    // 没配置时显示占位符，不显示 $0.00 这种像真数字的东西。
+    val (integer, decimals) = if (value == null) {
+        "—" to ""
+    } else {
+        val text = String.format(Locale.US, "%.2f", value)
+        val dot = text.indexOf('.')
+        ("$" + text.substring(0, dot)) to text.substring(dot)
+    }
     Column(modifier = modifier) {
         Text(text = label, style = TextStyle(color = ColorProvider(TextDim), fontSize = 10.sp))
         Spacer(GlanceModifier.height(2.dp))

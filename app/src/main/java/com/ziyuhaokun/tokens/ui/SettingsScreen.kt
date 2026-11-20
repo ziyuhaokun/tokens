@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,18 +50,27 @@ fun SettingsScreen(
     versionName: String,
     saving: Boolean,
     saveError: String?,
+    /** 每保存成功一次 +1；变了就收起表单。 */
+    saveCount: Int,
     onBack: () -> Unit,
     onThemeMode: (ThemeMode) -> Unit,
     onAccent: (AccentChoice) -> Unit,
     onFontScale: (FontScaleChoice) -> Unit,
     onMotion: (Boolean) -> Unit,
     onSaveCredentials: (String, String) -> Unit,
+    onDismissCredentials: () -> Unit,
     onSignOut: () -> Unit,
     onClearCache: () -> Unit,
     onRefreshAll: () -> Unit,
 ) {
     var showCredentials by remember { mutableStateOf(false) }
     var cleared by remember { mutableStateOf(false) }
+
+    // 只在验证通过后收起表单；失败时表单留着，错误就显示在里面。
+    val initialSaveCount = remember { saveCount }
+    LaunchedEffect(saveCount) {
+        if (saveCount != initialSaveCount) showCredentials = false
+    }
 
     Column(
         modifier = Modifier
@@ -164,7 +174,10 @@ fun SettingsScreen(
                 )
             }
             HairlineDivider()
-            ActionRow("更新 Key 或服务器地址") { showCredentials = !showCredentials }
+            ActionRow("更新 Key 或服务器地址") {
+                if (showCredentials) onDismissCredentials()
+                showCredentials = !showCredentials
+            }
             if (showCredentials) {
                 Spacer(Modifier.height(10.dp))
                 CredentialsForm(
@@ -172,12 +185,13 @@ fun SettingsScreen(
                     initialUrl = settings?.baseUrl ?: "https://vibecafe.ai",
                     saving = saving,
                     error = saveError,
-                    saveLabel = "保存",
-                    onSave = { key, url ->
+                    saveLabel = "验证并保存",
+                    allowBlankKey = true,
+                    onSave = onSaveCredentials,
+                    onCancel = {
                         showCredentials = false
-                        onSaveCredentials(key, url)
+                        onDismissCredentials()
                     },
-                    onCancel = { showCredentials = false },
                 )
             }
             HairlineDivider()
@@ -185,9 +199,9 @@ fun SettingsScreen(
                 label = if (cleared) "缓存已清除" else "清除本地缓存",
                 valueColor = if (cleared) Palette.Ok else null,
             ) {
+                // onClearCache 内部会在清完之后自己触发刷新。
                 onClearCache()
                 cleared = true
-                onRefreshAll()
             }
             HairlineDivider()
             ActionRow("立即刷新") { onRefreshAll() }

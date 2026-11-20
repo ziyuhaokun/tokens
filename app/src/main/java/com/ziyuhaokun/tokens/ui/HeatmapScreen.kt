@@ -296,7 +296,7 @@ private fun MetricSwitch(selected: YearMetric, onSelect: (YearMetric) -> Unit) {
 }
 
 @Composable
-private fun Legend(thresholds: IntArray, metric: YearMetric, empty: Color, ramp: List<Color>) {
+private fun Legend(thresholds: DoubleArray, metric: YearMetric, empty: Color, ramp: List<Color>) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("少", color = Palette.Faint, fontSize = 8.sp)
         Spacer(Modifier.width(5.dp))
@@ -409,8 +409,6 @@ private fun StatBlock(label: String, value: String, hint: String, modifier: Modi
 
 private val LABEL_WIDTH = 26.dp
 
-private fun monthAbbrev(month: Int): String = "${month}月"
-
 /**
  * 按「年-月」分行，返回 (月份, 该月在这个窗口里的日期)。
  *
@@ -436,17 +434,21 @@ private fun valueOf(day: DayUsage?, metric: YearMetric): Double =
         YearMetric.TOKENS -> (day?.tokens ?: 0L).toDouble()
     }
 
-/** 用非零日的分位数当色阶阈值：不同账号的量级差几个数量级，固定阈值会一片死黑。 */
-internal fun thresholds(data: YearData, metric: YearMetric): IntArray {
+/**
+ * 用非零日的分位数当色阶阈值：不同账号的量级差几个数量级，固定阈值会一片死黑。
+ *
+ * 阈值必须是 Double：取整会把 $0.3 和 $1.9 压成同一档，小额日全都一个颜色。
+ */
+internal fun thresholds(data: YearData, metric: YearMetric): DoubleArray {
     val values = data.days.map { valueOf(it, metric) }.filter { it > 0.0 }.sorted()
-    if (values.isEmpty()) return intArrayOf(0, 0, 0)
-    fun at(p: Double): Int = values[((values.size - 1) * p).toInt()].toInt().coerceAtLeast(1)
-    return intArrayOf(at(0.4), at(0.7), at(0.9))
+    if (values.isEmpty()) return doubleArrayOf(0.0, 0.0, 0.0)
+    fun at(p: Double): Double = values[((values.size - 1) * p).toInt()]
+    return doubleArrayOf(at(0.4), at(0.7), at(0.9))
 }
 
-internal fun levelOf(day: DayUsage?, metric: YearMetric, thresholds: IntArray): Int {
+internal fun levelOf(day: DayUsage?, metric: YearMetric, thresholds: DoubleArray): Int {
     if (day == null || !day.hasUsage) return 0
-    val value = valueOf(day, metric).toInt()
+    val value = valueOf(day, metric)
     return when {
         value <= thresholds[0] -> 1
         value <= thresholds[1] -> 2
