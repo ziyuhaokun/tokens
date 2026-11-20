@@ -701,8 +701,8 @@ private fun AccentRow(selected: AccentChoice, onSelect: (AccentChoice) -> Unit) 
     }
 }
 
-/** 只露前 6 位和后 4 位，中间打码。 */
+/** 只露最后 4 位，其余全打码——截图、录屏里露出的位数越少越好。 */
 internal fun maskKey(key: String): String {
-    if (key.length <= 12) return "••••"
-    return key.take(6) + "••••" + key.takeLast(4)
+    if (key.length <= 8) return "••••"
+    return "••••" + key.takeLast(4)
 }

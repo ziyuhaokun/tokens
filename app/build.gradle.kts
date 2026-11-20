@@ -12,8 +12,8 @@ android {
         applicationId = "com.ziyuhaokun.tokens"
         minSdk = 26
         targetSdk = 37
-        versionCode = 11
-        versionName = "0.9.1"
+        versionCode = 12
+        versionName = "0.9.2"
     }
 
     buildFeatures {
@@ -25,9 +25,28 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    signingConfigs {
+        // 本机有 ~/.gradle/gradle.properties 里的四项才创建；CI/别人机器没有就跳过，
+        // 只是打不出可发布的包，不影响 assembleDebug。
+        val storePath = providers.gradleProperty("TOKENS_STORE_FILE").orNull
+        if (storePath != null) {
+            create("release") {
+                storeFile = rootProject.file(storePath)
+                storePassword = providers.gradleProperty("TOKENS_STORE_PASSWORD").orNull
+                keyAlias = providers.gradleProperty("TOKENS_KEY_ALIAS").orNull
+                keyPassword = providers.gradleProperty("TOKENS_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // 由公开 debug 证书签名的包不能对外发：任何人都能造同包名、同签名的“升级包”。
+            // 签名参数从本机 gradle.properties / 环境变量读，绝不入库。
+            signingConfigs.findByName("release")?.let { signingConfig = it }
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }

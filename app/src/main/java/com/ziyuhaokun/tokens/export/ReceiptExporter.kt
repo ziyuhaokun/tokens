@@ -30,6 +30,9 @@ object ReceiptExporter {
     /** 分享用的缓存子目录，跟 res/xml/receipt_paths.xml 的 cache-path 一致。 */
     private const val SHARE_DIR = "receipts"
 
+    /** 分享图在缓存里留一天：给接收方留出读取时间，又不至于越攒越多。 */
+    private const val SHARE_TTL_MS = 24L * 60 * 60 * 1000
+
     /** 存到相册 Pictures/Tokens/。成功返回图片 Uri。 */
     suspend fun saveToGallery(context: Context, image: ImageBitmap, fileName: String): Result<Uri> =
         runCatching {
@@ -48,10 +51,13 @@ object ReceiptExporter {
         runCatching {
             val file = withContext(Dispatchers.IO) {
                 val dir = File(context.cacheDir, SHARE_DIR)
-                // 每次分享前清掉旧图，避免缓存目录越攒越大。
-                dir.listFiles()?.forEach { it.delete() }
                 dir.mkdirs()
-                File(dir, fileName).also { it.writeBytes(image.toPngBytes()) }
+                val now = System.currentTimeMillis()
+                // 只清一天前的旧图：刚分享出去的那份，接收方可能还没读（惰性读 content://）。
+                dir.listFiles()?.forEach { if (now - it.lastModified() > SHARE_TTL_MS) it.delete() }
+                // 名字只到分钟，同一分钟内再分享会互相覆盖，补一个毫秒后缀隔开。
+                val stem = fileName.substringBeforeLast('.', fileName)
+                File(dir, "$stem-$now.png").also { it.writeBytes(image.toPngBytes()) }
             }
             val uri = FileProvider.getUriForFile(context, "${context.packageName}.$SHARE_DIR", file)
             withContext(Dispatchers.Main) {

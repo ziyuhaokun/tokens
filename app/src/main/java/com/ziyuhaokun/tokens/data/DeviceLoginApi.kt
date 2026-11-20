@@ -10,6 +10,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 /**
@@ -43,6 +44,9 @@ class DeviceLoginApi(
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
         .callTimeout(25, TimeUnit.SECONDS)
+        // 不跟重定向：deviceCode 就是换 apiKey 的凭据，不能被 307 转到别的主机去。
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build(),
 ) {
     suspend fun request(baseUrl: String, clientName: String, hostname: String): DeviceLoginRequest =
@@ -52,11 +56,15 @@ class DeviceLoginApi(
                 .put("hostname", hostname)
                 .toString()
             val json = post(baseUrl, "/api/usage/device/code", body)
+            val userCode = json.optString("userCode")
             DeviceLoginRequest(
                 deviceCode = json.optString("deviceCode"),
-                userCode = json.optString("userCode"),
+                userCode = userCode,
+                // 兜底拼链接时验证码必须编码，否则服务端回一个带 & 的码就能注入额外参数。
                 verificationUri = json.optString("verificationUriComplete")
-                    .ifBlank { json.optString("verificationUri") + "?code=" + json.optString("userCode") },
+                    .ifBlank {
+                        json.optString("verificationUri") + "?code=" + URLEncoder.encode(userCode, "UTF-8")
+                    },
                 intervalSeconds = json.optInt("interval", 5).coerceIn(2, 60),
                 expiresInSeconds = json.optInt("expiresIn", 900).coerceIn(60, 3600),
             ).also {
@@ -88,22 +96,26 @@ class DeviceLoginApi(
     }
 
     private fun post(baseUrl: String, path: String, body: String): JSONObject {
-        val request = Request.Builder()
-            .url(baseUrl.trimEnd('/') + path)
-            .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .header("Accept", "application/json")
-            .build()
+        val request = try {
+            Request.Builder()
+                .url(baseUrl.trimEnd('/') + path)
+                .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .header("Accept", "application/json")
+                .build()
+        } catch (e: IllegalArgumentException) {
+            throw UsageApiException.Decode("服务器地址无效，检查「API 地址」")
+        }
         val response = try {
             client.newCall(request).execute()
         } catch (e: IOException) {
-            throw UsageApiException.Network(e.message ?: e::class.java.simpleName)
+            throw UsageApiException.Network((e.message ?: e::class.java.simpleName).take(120))
         }
         response.use { res ->
-            val text = res.body?.string().orEmpty()
+            val text = res.readTextLimited()
             if (res.code == 401) throw UsageApiException.Unauthorized
             if (!res.isSuccessful) throw UsageApiException.Http(res.code, text)
             return runCatching { JSONObject(text) }
-                .getOrElse { throw UsageApiException.Decode(it.message ?: "响应不是 JSON") }
+                .getOrElse { throw UsageApiException.Decode("响应不是 JSON") }
         }
     }
 

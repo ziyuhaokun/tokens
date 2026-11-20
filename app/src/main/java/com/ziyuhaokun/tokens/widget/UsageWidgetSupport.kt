@@ -48,7 +48,11 @@ enum class WidgetSize(val label: String, val receiver: Class<out GlanceAppWidget
     LARGE("4×4 用量趋势", UsageWidgetLargeReceiver::class.java),
 }
 
-/** 点小组件右上角「刷新」：立即抓一次、写缓存、重绘，不走 WorkManager 的 15 分钟节流。 */
+/**
+ * 点小组件右上角「刷新」：立即抓一次、写缓存、重绘。
+ * 这里仍受 [WidgetSync] 的最小间隔约束——receiver 是导出的，
+ * 任意应用都能发这条广播，没有间隔就会被当成免费的打点器。
+ */
 class RefreshAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         AppContainer.get(context).widgetSync.refresh()
@@ -60,7 +64,8 @@ class UsageRefreshWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        val outcome = AppContainer.get(applicationContext).widgetSync.refresh()
+        // 后台任务自带 30 分钟周期，不需要再被最小间隔挡一次。
+        val outcome = AppContainer.get(applicationContext).widgetSync.refresh(minIntervalMillis = 0)
         return when (outcome) {
             null, RefreshOutcome.OK -> Result.success()
             // 没 key / key 失效：重试也没用，等用户在 App 里重新配置。
@@ -112,11 +117,21 @@ object RefreshScheduler {
 /** 账号状态变化后统一收尾：排 / 撤后台任务，并让小组件重画。 */
 class WidgetSync(private val context: Context, private val repository: UsageRepository) {
     private val refreshLock = Mutex()
+    private val refreshPrefs by lazy {
+        context.getSharedPreferences("widget-refresh", Context.MODE_PRIVATE)
+    }
     private val _refreshing = MutableStateFlow(false)
     val refreshing = _refreshing.asStateFlow()
 
-    /** 桌面点击和后台任务共用一次刷新。null 表示已有请求在跑。 */
-    suspend fun refresh(): RefreshOutcome? {
+    /**
+     * 桌面点击和后台任务共用一次刷新。
+     * null 表示「已有请求在跑」或「距上次刷新不足 [minIntervalMillis]」——两种都当作成功。
+     */
+    suspend fun refresh(minIntervalMillis: Long = MIN_REFRESH_INTERVAL_MS): RefreshOutcome? {
+        if (minIntervalMillis > 0) {
+            val last = refreshPrefs.getLong(KEY_LAST_REFRESH, 0L)
+            if (System.currentTimeMillis() - last < minIntervalMillis) return null
+        }
         if (!refreshLock.tryLock()) return null
         val outcome = try {
             _refreshing.value = true
@@ -125,6 +140,7 @@ class WidgetSync(private val context: Context, private val repository: UsageRepo
             repository.refreshForWidget()
         } finally {
             _refreshing.value = false
+            refreshPrefs.edit().putLong(KEY_LAST_REFRESH, System.currentTimeMillis()).apply()
             refreshLock.unlock()
         }
         redraw()
@@ -171,6 +187,12 @@ class WidgetSync(private val context: Context, private val repository: UsageRepo
             RefreshScheduler.cancel(context)
         }
         redraw()
+    }
+
+    private companion object {
+        /** 两次联网刷新之间的最小间隔：receiver 是导出的，没有这个就是免费打点器。 */
+        const val MIN_REFRESH_INTERVAL_MS = 60_000L
+        const val KEY_LAST_REFRESH = "last_refresh_at"
     }
 
     suspend fun redraw() {

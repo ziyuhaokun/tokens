@@ -1,6 +1,7 @@
 package com.ziyuhaokun.tokens.ui
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.SystemBarStyle
@@ -204,6 +205,11 @@ class MainActivity : ComponentActivity() {
                         viewModel.clearSaveError()
                     }
 
+                    // 引导页上有 API Key 输入框，这段时间禁止截屏/录屏/最近任务预览。
+                    LaunchedEffect(state.ready, state.configured) {
+                        setSecureWindow(!state.ready || !state.configured)
+                    }
+
                     // 设置页不是独立 Activity：系统返回键要自己接住，否则会直接退出 App。
                     Box(Modifier.fillMaxSize()) {
                         when {
@@ -351,6 +357,18 @@ private fun SettingsOverlay(onDismiss: () -> Unit, content: @Composable () -> Un
         content()
     }
 }
+
+    /**
+     * 只有「屏幕上确实有凭据」时才加 FLAG_SECURE。常驻会让用户连自己的用量截图都截不了，
+     * 所以按需开关：引导页挂着时开，进主界面就关。
+     */
+    private fun setSecureWindow(secure: Boolean) {
+        if (secure) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
 
     private fun applySystemBars(dark: Boolean) {
         enableEdgeToEdge(

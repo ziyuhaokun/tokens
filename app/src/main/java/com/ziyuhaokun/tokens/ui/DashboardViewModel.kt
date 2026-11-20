@@ -23,7 +23,13 @@ import kotlinx.coroutines.launch
 sealed interface LoginPhase {
     data object Idle : LoginPhase
     data object Starting : LoginPhase
-    data class Waiting(val userCode: String, val verificationUri: String, val expiresAt: Long) : LoginPhase
+    data class Waiting(
+        val userCode: String,
+        val verificationUri: String,
+        val expiresAt: Long,
+        /** 服务端地址，用来核对验证页的主机是不是同一个。 */
+        val baseUrl: String = DEFAULT_BASE_URL,
+    ) : LoginPhase
     data object Denied : LoginPhase
     data object Expired : LoginPhase
     data class Failed(val message: String) : LoginPhase
@@ -175,7 +181,14 @@ class DashboardViewModel(
             }
             val expiresAt = System.currentTimeMillis() + request.expiresInSeconds * 1000L
             _state.update {
-                it.copy(login = LoginPhase.Waiting(request.userCode, request.verificationUri, expiresAt))
+                it.copy(
+                    login = LoginPhase.Waiting(
+                        userCode = request.userCode,
+                        verificationUri = request.verificationUri,
+                        expiresAt = expiresAt,
+                        baseUrl = stored.baseUrl,
+                    ),
+                )
             }
             pollUntilApproved(stored.baseUrl, request, expiresAt)
         }

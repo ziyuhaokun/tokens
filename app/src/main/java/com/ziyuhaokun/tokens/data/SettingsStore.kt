@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -15,6 +16,31 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 val DEFAULT_BASE_URL = "https://vibecafe.ai"
+
+/**
+ * 归一化服务器地址：裸域名补 https，去掉 query/fragment 与尾部斜杠。
+ * 只放行 https；本机调试地址（localhost / 127.0.0.1 / 10.0.2.2）例外放行 http。
+ * 返回 null 表示这个地址不能用——API Key 会被发到那里，不能让它随便是谁。
+ */
+fun normalizeBaseUrl(raw: String): String? {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) return DEFAULT_BASE_URL
+    val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        trimmed
+    } else {
+        "https://$trimmed"
+    }
+    val parsed = runCatching { withScheme.toHttpUrlOrNull() }.getOrNull() ?: return null
+    val host = parsed.host
+    val loopback = host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2"
+    if (!parsed.isHttps && !loopback) return null
+    return parsed.newBuilder()
+        .query(null)
+        .fragment(null)
+        .build()
+        .toString()
+        .trimEnd('/')
+}
 
 /** 汇率允许的范围：防止输错一位数把所有金额放大十倍。 */
 val CNY_RATE_RANGE = 1.0..20.0
@@ -100,12 +126,16 @@ class SettingsStore(private val context: Context) {
 
     suspend fun snapshot(): StoredSettings = data.first()
 
-    /** 返回 false 表示 Keystore 加密失败，key 没有落盘。 */
+    /**
+     * 返回 false 表示没有落盘（Keystore 加密失败，或服务器地址不合法）。
+     * 地址必须先过 [normalizeBaseUrl]：key 是跟着这个地址发出去的。
+     */
     suspend fun saveCredentials(apiKey: String, baseUrl: String): Boolean {
+        val url = normalizeBaseUrl(baseUrl) ?: return false
         val blob = SecretBox.encrypt(apiKey.trim()) ?: return false
         context.tokensDataStore.edit { prefs ->
             prefs[Keys.apiKeyBlob] = blob
-            prefs[Keys.baseUrl] = baseUrl.trim().ifBlank { DEFAULT_BASE_URL }
+            prefs[Keys.baseUrl] = url
         }
         return true
     }
@@ -122,7 +152,8 @@ class SettingsStore(private val context: Context) {
     }
 
     suspend fun saveBaseUrl(url: String) {
-        context.tokensDataStore.edit { it[Keys.baseUrl] = url.trim().ifBlank { DEFAULT_BASE_URL } }
+        val normalized = normalizeBaseUrl(url) ?: return
+        context.tokensDataStore.edit { it[Keys.baseUrl] = normalized }
     }
 
     suspend fun saveThemeMode(mode: ThemeMode) {

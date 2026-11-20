@@ -1,3 +1,7 @@
+// visualTransformation 在 Compose 1.10 被标记废弃，官方指向 BasicSecureTextField；
+// 那个的样式和这一整套输入框对不上，先用旧 API 并在本文件屏蔽废弃告警。
+@file:Suppress("DEPRECATION")
+
 package com.ziyuhaokun.tokens.ui
 
 import androidx.compose.foundation.BorderStroke
@@ -44,10 +48,13 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ziyuhaokun.tokens.data.DEFAULT_BASE_URL
+import com.ziyuhaokun.tokens.data.normalizeBaseUrl
 
 @Composable
 fun SetupScreen(
@@ -68,7 +75,9 @@ fun SetupScreen(
         val target = waiting ?: return@LaunchedEffect
         if (openedCode == target.userCode) return@LaunchedEffect
         openedCode = target.userCode
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target.verificationUri))) }
+        // 链接是服务端给的，先确认是自己那个域名的 https 页面再打开。
+        val safe = trustedVerificationUri(target.verificationUri, target.baseUrl) ?: return@LaunchedEffect
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, safe)) }
     }
 
     Column(
@@ -177,6 +186,9 @@ fun SetupScreen(
 @Composable
 private fun LoginWaiting(waiting: LoginPhase.Waiting, onCancel: () -> Unit) {
     val context = LocalContext.current
+    val safeUri = remember(waiting.verificationUri, waiting.baseUrl) {
+        trustedVerificationUri(waiting.verificationUri, waiting.baseUrl)
+    }
     CardLabel("在浏览器中确认")
     Spacer(Modifier.height(10.dp))
     Text(
@@ -198,8 +210,10 @@ private fun LoginWaiting(waiting: LoginPhase.Waiting, onCancel: () -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Button(
             onClick = {
-                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(waiting.verificationUri))) }
+                val target = safeUri ?: return@Button
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, target)) }
             },
+            enabled = safeUri != null,
             modifier = Modifier.weight(1f).height(44.dp),
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Palette.Text, contentColor = Palette.Bg),
@@ -217,10 +231,31 @@ private fun LoginWaiting(waiting: LoginPhase.Waiting, onCancel: () -> Unit) {
     }
     Spacer(Modifier.height(10.dp))
     Text(
-        text = "确认后会自动完成，页面会自己跳到用量。",
-        color = Palette.Dim,
+        text = if (safeUri == null) {
+            "服务器返回的确认链接不可信（不是同一域名的 https 页面），已拦下。请检查「API 地址」后重新登录。"
+        } else {
+            "确认后会自动完成，页面会自己跳到用量。"
+        },
+        color = if (safeUri == null) Palette.Warn else Palette.Dim,
         fontSize = TokensType.Caption,
     )
+}
+
+/**
+ * 只接受「https（本机调试可用 http）+ 和服务器地址同一个域名」的链接。
+ * 服务端响应是不受信输入：放任它就能拉起 intent:// 、sms: 或钓鱼页面，
+ * 而用户会在这个页面里输入验证码。
+ */
+private fun trustedVerificationUri(raw: String, baseUrl: String): Uri? {
+    val uri = runCatching { Uri.parse(raw) }.getOrNull() ?: return null
+    val scheme = uri.scheme?.lowercase() ?: return null
+    if (scheme != "https" && scheme != "http") return null
+    val host = uri.host?.lowercase() ?: return null
+    val baseHost = runCatching { java.net.URI(baseUrl).host?.lowercase() }.getOrNull()
+    val loopback = host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2"
+    if (scheme == "http" && !loopback) return null
+    if (!loopback && baseHost != null && host != baseHost) return null
+    return uri
 }
 
 /** 被拒绝 / 过期 / 出错的提示，颜色跟着严重程度走。 */
@@ -239,6 +274,7 @@ private fun LoginMessages(login: LoginPhase) {
 }
 
 
+
 @Composable
 fun CredentialsForm(
     initialKey: String,
@@ -255,6 +291,10 @@ fun CredentialsForm(
     var key by remember { mutableStateOf(initialKey) }
     var url by remember { mutableStateOf(initialUrl) }
     var showAdvanced by remember { mutableStateOf(false) }
+    // 默认打码，要看再点「显示」：这个框里就是账号的读写凭据。
+    var revealKey by remember { mutableStateOf(false) }
+    val normalizedUrl = remember(url) { normalizeBaseUrl(url) }
+    val urlProblem = if (url.isBlank() || normalizedUrl != null) null else "地址必须以 https:// 开头（本机调试可用 http://localhost）"
 
     Column(modifier = Modifier.fillMaxWidth()) {
         OutlinedTextField(
@@ -270,7 +310,20 @@ fun CredentialsForm(
             },
             singleLine = true,
             enabled = !saving,
+            visualTransformation = if (revealKey) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            trailingIcon = {
+                TextButton(
+                    onClick = { revealKey = !revealKey },
+                    contentPadding = ButtonDefaults.TextButtonContentPadding,
+                ) {
+                    Text(
+                        text = if (revealKey) "隐藏" else "显示",
+                        color = Palette.Dim,
+                        fontSize = TokensType.Caption,
+                    )
+                }
+            },
             colors = fieldColors(),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -292,8 +345,23 @@ fun CredentialsForm(
                 label = { Text("API 地址", fontSize = TokensType.Caption) },
                 singleLine = true,
                 enabled = !saving,
+                isError = urlProblem != null,
                 colors = fieldColors(),
                 modifier = Modifier.fillMaxWidth(),
+            )
+            if (urlProblem != null) {
+                Text(
+                    text = urlProblem,
+                    color = Palette.Warn,
+                    fontSize = TokensType.Caption,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
+            Text(
+                text = "API Key 会发到这个地址，只填写你信任的服务器。",
+                color = Palette.Dim,
+                fontSize = TokensType.Caption,
+                modifier = Modifier.padding(top = 6.dp),
             )
         }
 
@@ -304,8 +372,8 @@ fun CredentialsForm(
 
         Spacer(Modifier.height(16.dp))
         Button(
-            onClick = { onSave(key, url.ifBlank { DEFAULT_BASE_URL }) },
-            enabled = !saving && (allowBlankKey || key.isNotBlank()),
+            onClick = { onSave(key, normalizedUrl ?: DEFAULT_BASE_URL) },
+            enabled = !saving && (allowBlankKey || key.isNotBlank()) && normalizedUrl != null,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),

@@ -8,6 +8,7 @@ import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okio.Buffer
 import java.io.IOException
 import java.net.URLEncoder
 import java.time.ZoneId
@@ -43,11 +44,38 @@ sealed class UsageApiException(message: String) : Exception(message) {
     }
 }
 
+/** 单次响应体上限：最大的请求（365 天）约 1.5MB，留 8MB 余量。 */
+internal const val MAX_RESPONSE_BYTES = 8L * 1024 * 1024
+
+/**
+ * 限量读取响应体。不信任服务端声明的 contentLength，边读边计数：
+ * 超大响应（网关报错页、被污染的接口、无限流式响应）直接判失败，
+ * 不然一次请求就能把内存和缓存文件打爆。
+ */
+internal fun Response.readTextLimited(limit: Long = MAX_RESPONSE_BYTES): String {
+    val body = body ?: return ""
+    val declared = body.contentLength()
+    if (declared > limit) throw UsageApiException.Decode("响应过大（$declared 字节）")
+    val source = body.source()
+    val buffer = Buffer()
+    var total = 0L
+    while (true) {
+        val read = source.read(buffer, 64L * 1024)
+        if (read == -1L) break
+        total += read
+        if (total > limit) throw UsageApiException.Decode("响应过大")
+    }
+    return buffer.readUtf8()
+}
+
 class UsageApi(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
         .callTimeout(30, TimeUnit.SECONDS)
+        // 不跟重定向：地址由用户填写，跳走就换了个主机，带 key 的请求不该跟着走。
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build(),
 ) {
     /** GET {baseUrl}/api/usage，自动带 tz。失败一律以 UsageApiException 抛出。 */
@@ -62,28 +90,34 @@ class UsageApi(
             add("tz=${URLEncoder.encode(zone.id, "UTF-8")}")
         }.joinToString("&")
         val url = baseUrl.trimEnd('/') + "/api/usage?" + query
-        val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $apiKey")
-            .header("Accept", "application/json")
-            .get()
-            .build()
+        val request = try {
+            Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $apiKey")
+                .header("Accept", "application/json")
+                .get()
+                .build()
+        } catch (e: IllegalArgumentException) {
+            // 地址拼不出合法 URL（没 scheme、带空格等）：别再让底层异常裸奔到界面上。
+            throw UsageApiException.Decode("服务器地址无效，检查「API 地址」")
+        }
 
         val response = try {
             client.newCall(request).await()
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            throw UsageApiException.Network(e.message ?: e::class.java.simpleName)
+            throw UsageApiException.Network((e.message ?: e::class.java.simpleName).take(120))
         }
 
         response.use { res ->
-            val body = res.body?.string().orEmpty()
+            val body = res.readTextLimited()
             when {
                 res.code == 401 -> throw UsageApiException.Unauthorized
                 !res.isSuccessful -> throw UsageApiException.Http(res.code, body)
                 else -> runCatching { Usage.parse(body, zone) }
-                    .getOrElse { throw UsageApiException.Decode(it.message ?: "未知错误") }
+                    // 不把 org.json 的原文（可能含整段响应内容）带给用户。
+                    .getOrElse { throw UsageApiException.Decode("数据格式不正确") }
             }
         }
     }
