@@ -12,8 +12,8 @@ android {
         applicationId = "com.ziyuhaokun.tokens"
         minSdk = 26
         targetSdk = 37
-        versionCode = 16
-        versionName = "0.11.1"
+        versionCode = 17
+        versionName = "0.11.2"
     }
 
     buildFeatures {
@@ -28,7 +28,7 @@ android {
     signingConfigs {
         // 本机有 ~/.gradle/gradle.properties 里的四项才创建；CI/别人机器没有就跳过，
         // 只是打不出可发布的包，不影响 assembleDebug。
-        val storePath = providers.gradleProperty("TOKENS_STORE_FILE").orNull
+        val storePath = providers.gradleProperty("TOKENS_STORE_FILE").orNull?.takeIf { it.isNotBlank() }
         if (storePath != null) {
             create("release") {
                 storeFile = rootProject.file(storePath)
@@ -47,6 +47,24 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+}
+
+// 发布包必须有正式签名：没配签名四项时，打 release 包 / bundle 直接失败。
+// 之前会默默产出一个未签名的包，CI 里还显示成功，很容易误发。
+// 只抓最终打包的两个任务，不影响 assembleDebug 和单元测试。
+// 开一个局部作用域、只捕获一个 Boolean：直接引用脚本级变量会把整个脚本对象带进任务，
+// configuration cache 会报「cannot serialize Gradle script object references」。
+run {
+    val signingConfigured = providers.gradleProperty("TOKENS_STORE_FILE").orNull?.isNotBlank() == true
+    tasks.matching { it.name == "packageRelease" || it.name == "bundleRelease" }.configureEach {
+        doFirst {
+            check(signingConfigured) {
+                "没有配置发布签名，拒绝产出未签名的 release 包。" +
+                    "请在 ~/.gradle/gradle.properties 里填 TOKENS_STORE_FILE / TOKENS_STORE_PASSWORD / " +
+                    "TOKENS_KEY_ALIAS / TOKENS_KEY_PASSWORD（见 README「从源码运行」）；只想试装请用 assembleDebug。"
+            }
         }
     }
 }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
 
@@ -33,8 +34,6 @@ sealed interface UpdateState {
     /** [info] 为空 = 检查阶段失败（还没发现新版本）。 */
     data class Failed(val message: String, val info: ReleaseInfo?) : UpdateState
 }
-
-enum class InstallResult { STARTED, NEED_PERMISSION, FAILED }
 
 /**
  * 自动更新：从 GitHub Release 检查新版本、下载、校验，再交给系统安装器。
@@ -77,8 +76,9 @@ class UpdateManager(
     fun autoCheck(now: Long = System.currentTimeMillis()) {
         scope.launch {
             val stored = settings.snapshot()
-            if (_state.value !is UpdateState.Idle) return@launch
             if (now - stored.lastUpdateCheck in 0 until AUTO_CHECK_INTERVAL_MS) return@launch
+            // 原子地从 Idle 切到 Checking：已经在检查 / 下载 / 有结果时不重复开。
+            if (!_state.compareAndSet(UpdateState.Idle, UpdateState.Checking)) return@launch
             // 新进程里不会有上一次留下的下载状态，旧的安装包 / 半截文件顺手清掉。
             updatesDir.deleteRecursively()
             check(manual = false)
@@ -87,12 +87,15 @@ class UpdateManager(
 
     /** 设置页的「检查更新」：不限频，失败会显示原因，发现新版本会弹窗。 */
     fun checkNow() {
-        if (_state.value is UpdateState.Checking || _state.value is UpdateState.Downloading) return
+        val current = _state.value
+        if (current is UpdateState.Checking || current is UpdateState.Downloading) return
+        // 原子切换：连点两次只有第一次能进来，不会并发发出两次请求。
+        if (!_state.compareAndSet(current, UpdateState.Checking)) return
         scope.launch { check(manual = true) }
     }
 
+    /** 调用方已经把状态原子地切到了 [UpdateState.Checking]。 */
     private suspend fun check(manual: Boolean) {
-        _state.value = UpdateState.Checking
         try {
             val info = api.fetchLatest()
             settings.saveLastUpdateCheck(System.currentTimeMillis())
@@ -116,15 +119,17 @@ class UpdateManager(
 
     /** 用户点「更新」/「重试」。 */
     fun startDownload() {
-        val info = when (val s = _state.value) {
-            is UpdateState.Available -> s.info
-            is UpdateState.Failed -> s.info ?: return
+        val current = _state.value
+        val info = when (current) {
+            is UpdateState.Available -> current.info
+            is UpdateState.Failed -> current.info ?: return
             else -> return
         }
+        // 原子切换：连点「更新」不会开两个下载。
+        if (!_state.compareAndSet(current, UpdateState.Downloading(info, 0, info.apkSize))) return
         _notice.value = null
         job?.cancel()
         job = scope.launch {
-            _state.value = UpdateState.Downloading(info, 0, info.apkSize)
             val dest = File(updatesDir, "update-${safeName(info.version)}.apk")
             try {
                 api.download(info, dest) { done, total ->
@@ -134,16 +139,16 @@ class UpdateManager(
                     }
                 }
                 verifyApk(dest)
-                _state.value = UpdateState.Ready(info, dest)
+                finishDownload(info, UpdateState.Ready(info, dest))
             } catch (e: CancellationException) {
                 dest.delete()
                 throw e
             } catch (e: UpdateException) {
                 dest.delete()
-                _state.value = UpdateState.Failed(e.message ?: "更新失败", info)
+                finishDownload(info, UpdateState.Failed(e.message ?: "更新失败", info))
             } catch (e: Exception) {
                 dest.delete()
-                _state.value = UpdateState.Failed("更新失败：安装包无法使用", info)
+                finishDownload(info, UpdateState.Failed("更新失败：安装包无法使用", info))
             }
         }
     }
@@ -155,36 +160,81 @@ class UpdateManager(
         _state.value = UpdateState.Available(s.info)
     }
 
-    /** 拉起系统安装器。没有「安装未知应用」权限就先带用户去开。 */
-    fun install(): InstallResult {
-        val ready = _state.value as? UpdateState.Ready ?: return InstallResult.FAILED
-        if (!ready.file.isFile) {
-            _state.value = UpdateState.Failed("安装包不见了，请重新下载", ready.info)
-            return InstallResult.FAILED
+    /**
+     * 拉起系统安装器。
+     * 先在后台把安装包整个重新核一遍（SHA-256 + 包名 / 版本 / 签名）：下载校验和点「安装」之间
+     * 可能隔了很久，文件在这段时间里被换掉也要能发现。没有「安装未知应用」权限就先带用户去开。
+     */
+    fun install() {
+        val ready = _state.value as? UpdateState.Ready ?: return
+        scope.launch {
+            val problem = withContext(Dispatchers.IO) {
+                runCatching { recheck(ready) }.exceptionOrNull()
+            }
+            if (problem != null) {
+                ready.file.delete()
+                val message = (problem as? UpdateException)?.message ?: "安装包校验失败，请重新下载"
+                _state.update { s ->
+                    if (s is UpdateState.Ready && s.info.tag == ready.info.tag) UpdateState.Failed(message, ready.info) else s
+                }
+                return@launch
+            }
+            launchInstaller(ready.file)
         }
+    }
+
+    private fun launchInstaller(file: File) {
         if (!appContext.packageManager.canRequestPackageInstalls()) {
             _notice.value = "请先在系统设置里允许 Tokens 安装应用，然后回来再点一次「安装」。"
             val intent = Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:${appContext.packageName}"),
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            return if (runCatching { appContext.startActivity(intent) }.isSuccess) {
-                InstallResult.NEED_PERMISSION
-            } else {
-                InstallResult.FAILED
-            }
+            runCatching { appContext.startActivity(intent) }
+            return
         }
         _notice.value = null
-        return runCatching {
-            val uri = FileProvider.getUriForFile(appContext, "${appContext.packageName}.receipts", ready.file)
+        runCatching {
+            val uri = FileProvider.getUriForFile(appContext, "${appContext.packageName}.receipts", file)
             val intent = Intent(Intent.ACTION_VIEW)
                 .setDataAndType(uri, "application/vnd.android.package-archive")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             appContext.startActivity(intent)
-            InstallResult.STARTED
-        }.getOrElse {
+        }.onFailure {
             _notice.value = "无法打开系统安装器。"
-            InstallResult.FAILED
+        }
+    }
+
+    /** 安装前复验：文件还在、SHA-256 没变（GitHub 给过指纹时）、包名 / 版本 / 签名仍然合格。 */
+    private fun recheck(ready: UpdateState.Ready) {
+        if (!ready.file.isFile) throw UpdateException("安装包不见了，请重新下载")
+        val expected = ready.info.sha256
+        if (expected != null && sha256Of(ready.file) != expected) {
+            throw UpdateException("安装包在下载后被改动，已拒绝，请重新下载")
+        }
+        verifyApk(ready.file)
+    }
+
+    private fun sha256Of(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val n = input.read(buffer)
+                if (n < 0) break
+                digest.update(buffer, 0, n)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * 下载协程收尾：只有状态还是「这个版本正在下载」才写结果。
+     * 用户中途点了「取消下载」时，慢一步的协程不能把状态改回 Ready / Failed。
+     */
+    private fun finishDownload(info: ReleaseInfo, result: UpdateState) {
+        _state.update { s ->
+            if (s is UpdateState.Downloading && s.info.tag == info.tag) result else s
         }
     }
 

@@ -27,7 +27,7 @@
 
 | 原则 | 落地 |
 | --- | --- |
-| 只读 | 只拉 `GET /api/usage`。上传和同步是 vibe-usage CLI 与桌面端的事。 |
+| 只读 | 用量只拉 `GET /api/usage`。上传和同步是 vibe-usage CLI 与桌面端的事。唯一的例外是检查更新：会访问 GitHub，见下面「自动更新」。 |
 | 先真数，再缓存 | 成功才写缓存。失败显示上次那份和「更新于 HH:mm」，不编一个 0。 |
 | 钥匙不出明文 | Keystore AES-GCM。设置页只露后 4 位。`allowBackup=false`，缓存放 `noBackupFilesDir`。 |
 | 一个界面 | 概览、热力、设置浮层、小票。小组件只读同一份缓存，自己不发请求。 |
@@ -97,7 +97,7 @@ TOKENS_KEY_PASSWORD=...
 .\gradlew.bat :app:assembleRelease
 ```
 
-没有这四项时得到 `app-release-unsigned.apk`，不能对外发布。`.gitignore` 已忽略 `*.jks` / `*.keystore`。
+没有这四项时 `assembleRelease` 会直接报错，不会再悄悄产出未签名包；只想自己装着试，用 `assembleDebug`。`.gitignore` 已忽略 `*.jks` / `*.keystore`。
 
 登录有两条路，都在引导页。浏览器设备码：App 给出验证码并打开确认页，确认后自动完成；确认链接必须是 https，且和 API 地址同域名。手动：填 `vbu_…`，默认打码。高级设置可改服务器，默认 `https://vibecafe.ai`，只放行 https；本机调试可用 `http://localhost` / `127.0.0.1` / `10.0.2.2`。先验证，通过才落盘。退出登录会清 Key 和全部缓存。
 
@@ -140,17 +140,27 @@ flowchart LR
 | 小组件 | Glance 1.2.0 |
 | 后台 | WorkManager 2.12.0，联网约束 |
 | 存储 | DataStore Preferences 1.3.0 + Keystore AES-GCM + `noBackupFilesDir` |
-| 网络 | OkHttp 5.5.1，不跟随重定向，响应上限 8MB；JSON 用 `org.json` |
+| 网络 | OkHttp 5.5.1。用量请求不跟随重定向、响应上限 8MB；更新下载只允许跟随到 GitHub 的发布文件域名；JSON 用 `org.json` |
 | 测试 | JUnit 4，纯 JVM |
+
+## 自动更新
+
+新版本从本仓库的 GitHub Release 取，没有别的更新源。
+
+- 进主界面后自动查一次最新 Release（距上次不到 6 小时不重复，失败不打扰你）；设置页「关于」里可手动检查。
+- 发现新版本会弹窗，显示更新说明，可「更新 / 稍后 / 跳过此版本」。点「更新」才下载，不会在后台偷偷用流量。
+- 安装前校验：附件的 SHA-256（GitHub 提供时）、包名、版本号必须更高、签名证书必须与当前 App 完全一致。下载的每一跳都只允许 https 的 `github.com` 与 GitHub 的发布文件域名。
+- 校验通过后拉起系统安装器，最后一步一定要你在系统界面点确认；第一次需要允许「安装未知应用」。做不到静默安装。
 
 ## 隐私
 
-没有统计、广告、崩溃上报，不写日志，不申请通讯录 / 定位 / 短信。用量只从你填的服务器读。
+没有统计、广告、崩溃上报，不写日志，不申请通讯录 / 定位 / 短信。用量只从你填的服务器读；除此之外，App 只会为检查和下载更新访问 GitHub，且不带 API Key。
 
 | 场景 | 发出去的 | 去向 |
 | --- | --- | --- |
 | 用量请求 | Bearer API Key（`vbu_…`，HTTPS）、本机时区 | 你填的服务器，默认 vibecafe.ai |
 | 设备码登录 | 厂商 + 型号、`clientName="Tokens Android"` | 同上 |
+| 检查更新 / 下载新版本 | 只有请求本身（`User-Agent: Tokens-Android`），不带 Key、不带账号和设备信息 | `api.github.com`，下载走 `github.com` 与 GitHub 发布文件域名 |
 | 小票分享 | 一张 PNG | 你自己选的分享目标 |
 
 引导页输入 Key 时加 `FLAG_SECURE`，进主界面后去掉，方便截用量图。登录确认链接校验域名，请求不跟随重定向。
@@ -162,4 +172,4 @@ flowchart LR
 - `sessions` 可能是空数组，这时「活跃」显示 0，并提示服务端没有 sessions。
 - 界面文案目前只有中文。小票可以选 English 或中英混合。
 
-**0.11.1** · 2026-11-21
+**0.11.2** · 2026-11-21

@@ -79,7 +79,9 @@ class MainActivity : ComponentActivity() {
             val stored by container.repository.settings.collectAsStateWithLifecycle(initialValue = null)
             // 主题切换自己留一份即时值：点下去立刻换配色，不等 DataStore 往返。
             var themeOverride by remember { mutableStateOf<ThemeMode?>(null) }
-            val themeMode = themeOverride ?: stored?.themeMode ?: ThemeMode.SYSTEM
+            // 冷启动第一帧还没有设置流的值：用上次存下的同步镜像，强制深 / 浅色的用户不会先闪一帧系统主题。
+            val bootTheme = remember { container.settings.bootThemeMode() }
+            val themeMode = themeOverride ?: stored?.themeMode ?: bootTheme
             val dark = when (themeMode) {
                 ThemeMode.DARK -> true
                 ThemeMode.LIGHT -> false

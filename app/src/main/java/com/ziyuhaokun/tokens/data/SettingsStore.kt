@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 val DEFAULT_BASE_URL = "https://vibecafe.ai"
 
@@ -102,6 +103,21 @@ class SettingsStore(private val context: Context) {
         val skippedVersion = stringPreferencesKey("skipped_version")
     }
 
+    /**
+     * 主题的同步镜像。DataStore 是异步的，冷启动第一帧还拿不到设置，会先按系统主题画一帧，
+     * 强制深色 / 浅色的用户就会看到一下闪。这里用一个很小的 SharedPreferences 存上次的值，第一帧就能同步读到。
+     * 设置流每次发值都会同步一次，所以老用户升级后第一次启动就会自动补上。
+     */
+    private val bootPrefs by lazy { context.getSharedPreferences("boot", Context.MODE_PRIVATE) }
+
+    fun bootThemeMode(): ThemeMode = ThemeMode.fromId(bootPrefs.getString("theme_mode", null))
+
+    private fun mirrorTheme(mode: ThemeMode) {
+        if (bootPrefs.getString("theme_mode", null) != mode.id) {
+            bootPrefs.edit().putString("theme_mode", mode.id).apply()
+        }
+    }
+
     // 改主题 / 字号也会让设置流重发；密文没变就别再走一遍 Keystore 解密。
     // 单个 volatile 保存 (blob, key) 对：两个独立字段在换账号时会出现「新 blob + 旧 key」。
     @Volatile private var cachedDecrypt: Pair<String, String?>? = null
@@ -110,7 +126,9 @@ class SettingsStore(private val context: Context) {
         if (blob == null) return null
         cachedDecrypt?.let { if (it.first == blob) return it.second }
         val key = SecretBox.decrypt(blob)
-        cachedDecrypt = blob to key
+        // 只记住解密成功的结果。Keystore 偶发失败时如果把 null 也记下来，同一份密文会一直被当成「未配置」，
+        // 直到重启 App 才恢复；不记的话下一次设置流发值时会自动再试。
+        if (key != null) cachedDecrypt = blob to key
         return key
     }
 
@@ -135,7 +153,7 @@ class SettingsStore(private val context: Context) {
             receiptLanguage = ReceiptLanguage.fromId(prefs[Keys.receiptLanguage]),
             lastUpdateCheck = prefs[Keys.lastUpdateCheck] ?: 0L,
             skippedVersion = prefs[Keys.skippedVersion],
-        )
+        ).also { mirrorTheme(it.themeMode) }
     }.flowOn(Dispatchers.Default)
 
     suspend fun snapshot(): StoredSettings = data.first()
@@ -146,7 +164,8 @@ class SettingsStore(private val context: Context) {
      */
     suspend fun saveCredentials(apiKey: String, baseUrl: String): Boolean {
         val url = normalizeBaseUrl(baseUrl) ?: return false
-        val blob = SecretBox.encrypt(apiKey.trim()) ?: return false
+        // Keystore 加密（首次还要现场生成密钥）可能要几百毫秒，不能在调用方（主线程）上做。
+        val blob = withContext(Dispatchers.Default) { SecretBox.encrypt(apiKey.trim()) } ?: return false
         context.tokensDataStore.edit { prefs ->
             prefs[Keys.apiKeyBlob] = blob
             prefs[Keys.baseUrl] = url

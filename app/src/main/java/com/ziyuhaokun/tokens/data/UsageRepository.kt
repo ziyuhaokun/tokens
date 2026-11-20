@@ -56,7 +56,10 @@ class UsageRepository(
         }
         // 换账号/改地址后，之前带着旧凭据在飞的请求一律不许再落缓存。
         fetches.invalidate()
-        return if (store.saveCredentials(key, url)) null else "Key 加密保存失败（Keystore 不可用）"
+        if (!store.saveCredentials(key, url)) return "Key 加密保存失败（Keystore 不可用）"
+        // 换了账号 / key：把旧账号留在磁盘上的缓存清掉。
+        cache.retainOnly(UsageCache.scopeOf(url, key))
+        return null
     }
 
     /** 浏览器登录第一步：拿验证码和确认链接。 */

@@ -70,6 +70,17 @@ class UsageCache(context: Context) {
         _version.value += 1
     }
 
+    /**
+     * 只留 [scope] 这个账号的缓存，其他账号的文件全删；再按总量上限从最旧的开始淘汰。
+     * 换账号 / 换 key 后调用，否则旧账号几 MB 的文件会永远留在磁盘上。
+     */
+    suspend fun retainOnly(scope: String, maxBytes: Long = MAX_CACHE_BYTES) {
+        val removed = withContext(Dispatchers.IO) {
+            lock.withLock { pruneCacheDir(dir, scope, maxBytes) }
+        }
+        if (removed > 0) _version.value += 1
+    }
+
     /** 旧版本把缓存放在 DataStore 里，迁到文件后那份已经没用，启动时删掉。 */
     suspend fun dropLegacy() {
         withContext(Dispatchers.IO) { if (legacyStore.exists()) legacyStore.delete() }
@@ -81,6 +92,9 @@ class UsageCache(context: Context) {
     }
 
     companion object {
+        /** 缓存目录总量上限。一个账号的全部范围加起来也就几 MB，这个值只是异常时的保险。 */
+        const val MAX_CACHE_BYTES = 32L * 1024 * 1024
+
         /** 账号作用域：同一个服务器 + 同一个 key 才算同一份缓存。 */
         fun scopeOf(baseUrl: String, apiKey: String): String {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -88,4 +102,28 @@ class UsageCache(context: Context) {
             return digest.take(8).joinToString("") { "%02x".format(it) }
         }
     }
+}
+
+/**
+ * 清理缓存目录，返回删掉的文件个数：
+ * 1. 文件名不以 `<scope>-` 开头的（别的账号留下的缓存、临时文件）全部删除；
+ * 2. 剩下的总大小超过 [maxBytes]，就从最久没改过的开始删，直到不超。
+ */
+internal fun pruneCacheDir(dir: File, scope: String, maxBytes: Long): Int {
+    var removed = 0
+    val all = dir.listFiles().orEmpty().filter { it.isFile }
+    for (file in all) {
+        if (!file.name.startsWith("$scope-") && file.delete()) removed++
+    }
+    val keep = dir.listFiles().orEmpty().filter { it.isFile }.sortedBy { it.lastModified() }
+    var total = keep.sumOf { it.length() }
+    for (file in keep) {
+        if (total <= maxBytes) break
+        val size = file.length()
+        if (file.delete()) {
+            total -= size
+            removed++
+        }
+    }
+    return removed
 }

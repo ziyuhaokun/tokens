@@ -96,6 +96,11 @@ class UpdateApi(
                 val declared = body.contentLength()
                 val total = if (declared > 0) declared else info.apkSize
                 if (total > UpdateLogic.MAX_APK_BYTES) throw UpdateException("安装包异常（体积过大）")
+                // 先查剩余空间，免得下到一半磁盘满了，再被误报成「网络中断」。留 16MB 余量给系统安装器用。
+                val needed = (if (total > 0) total else 0L) + 16L * 1024 * 1024
+                if (total > 0 && (dest.parentFile?.usableSpace ?: Long.MAX_VALUE) < needed) {
+                    throw UpdateException("存储空间不足，至少需要 ${needed / (1024 * 1024)}MB 可用空间")
+                }
 
                 val digest = MessageDigest.getInstance("SHA-256")
                 var read = 0L
@@ -109,7 +114,12 @@ class UpdateApi(
                             if (n < 0) break
                             read += n
                             if (read > UpdateLogic.MAX_APK_BYTES) throw UpdateException("安装包异常（体积过大）")
-                            out.write(buffer, 0, n)
+                            // 写盘失败（多半是空间不足）要和网络中断分开报，用户才知道该清理手机而不是换网。
+                            try {
+                                out.write(buffer, 0, n)
+                            } catch (e: IOException) {
+                                throw UpdateException("保存安装包失败，请检查存储空间")
+                            }
                             digest.update(buffer, 0, n)
                             val now = System.nanoTime()
                             if (now - lastReport > 100_000_000L) {

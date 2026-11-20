@@ -24,6 +24,8 @@ class TokensApp : Application() {
                 container.widgetSync.publishPreviewsOnce(androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info))
             }
             val settings = container.settings.snapshot()
+            // 把别的账号留下的旧缓存、超过总量上限的部分清掉（升级前换过账号的设备也能回收）。
+            settings.cacheScope?.let { container.cache.retainOnly(it) }
             if (settings.configured) {
                 RefreshScheduler.schedule(this@TokensApp)
                 // 小组件的 7 天缓存不在（刚升级 / 刚清过缓存）就立刻补一次；
