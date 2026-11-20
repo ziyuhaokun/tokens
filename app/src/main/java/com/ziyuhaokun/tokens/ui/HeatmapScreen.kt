@@ -132,6 +132,7 @@ fun HeatmapScreen(
 
 @Composable
 private fun YearHero(data: YearData, metric: YearMetric) {
+    val nf = LocalNumberFormats.current
     Column {
         Text(
             text = "过去一年",
@@ -141,20 +142,20 @@ private fun YearHero(data: YearData, metric: YearMetric) {
         Spacer(Modifier.height(8.dp))
         // BigMoney 自己会把 "$" 拆成小号前缀，这里不用手工拆。
         if (metric == YearMetric.COST) {
-            val (integer, decimals) = Fmt.moneyParts(data.totalCost)
+            val (integer, decimals) = nf.moneyParts(data.totalCost)
             BigMoney(integer = integer, decimals = decimals)
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "${data.activeDays} 天有用量 · ${Fmt.tokens(data.totalTokens)} tokens",
+                text = "${data.activeDays} 天有用量 · ${nf.tokens(data.totalTokens)} tokens",
                 color = Palette.Dim,
                 fontSize = TokensType.Caption,
             )
         } else {
-            val (integer, rest) = Fmt.tokensParts(data.totalTokens)
+            val (integer, rest) = nf.tokensParts(data.totalTokens)
             BigMoney(integer = integer, decimals = rest)
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "${data.activeDays} 天有用量 · ${Fmt.money(data.totalCost)}",
+                text = "${data.activeDays} 天有用量 · ${nf.money(data.totalCost)}",
                 color = Palette.Dim,
                 fontSize = TokensType.Caption,
             )
@@ -451,6 +452,7 @@ private fun Legend(thresholds: DoubleArray, metric: YearMetric, empty: Color, ra
 
 @Composable
 private fun DayDetail(date: LocalDate?, entry: DayUsage?, metric: YearMetric) {
+    val nf = LocalNumberFormats.current
     if (date == null) {
         Text(
             text = "点任意一格看当天明细",
@@ -470,14 +472,14 @@ private fun DayDetail(date: LocalDate?, entry: DayUsage?, metric: YearMetric) {
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = if (metric == YearMetric.COST) Fmt.money(cost) else Fmt.tokens(tokens),
+            text = if (metric == YearMetric.COST) nf.money(cost) else nf.tokens(tokens),
             color = Palette.Text,
             fontSize = TokensType.Value,
             fontFamily = NumericFont,
         )
         Spacer(Modifier.width(10.dp))
         Text(
-            text = if (metric == YearMetric.COST) Fmt.tokens(tokens) else Fmt.money(cost),
+            text = if (metric == YearMetric.COST) nf.tokens(tokens) else nf.money(cost),
             color = Palette.Dim,
             fontSize = TokensType.Caption,
             fontFamily = NumericFont,
@@ -494,6 +496,7 @@ private fun DayDetail(date: LocalDate?, entry: DayUsage?, metric: YearMetric) {
 
 @Composable
 private fun YearStats(data: YearData, metric: YearMetric) {
+    val nf = LocalNumberFormats.current
     SoftCard {
         Row {
             StatBlock(
@@ -514,14 +517,14 @@ private fun YearStats(data: YearData, metric: YearMetric) {
             val best = data.bestDay
             StatBlock(
                 label = "最高一天",
-                value = best?.let { if (metric == YearMetric.COST) Fmt.money(it.cost) else Fmt.tokens(it.tokens) } ?: "—",
+                value = best?.let { if (metric == YearMetric.COST) nf.money(it.cost) else nf.tokens(it.tokens) } ?: "—",
                 hint = best?.date?.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA)) ?: "",
                 modifier = Modifier.weight(1f),
             )
             StatBlock(
                 label = "日均",
-                value = if (metric == YearMetric.COST) Fmt.money(data.averageCostPerActiveDay)
-                else Fmt.tokens(data.averageTokensPerActiveDay),
+                value = if (metric == YearMetric.COST) nf.money(data.averageCostPerActiveDay)
+                else nf.tokens(data.averageTokensPerActiveDay),
                 hint = "按有用量的天算",
                 modifier = Modifier.weight(1f),
             )

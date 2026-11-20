@@ -47,6 +47,16 @@ class UsageModelsTest {
         assertEquals("unknown", session.project)
         assertEquals(0L, session.activeSeconds)
         assertEquals(0L, session.startMillis)
+        assertEquals(0L, session.messageCount)
+    }
+
+    @Test
+    fun `parse reads session message count`() {
+        val json = """{"sessions":[{"messageCount":42},{"messageCount":"7"},{}]}"""
+
+        val counts = Usage.parse(json, zone).sessions.map { it.messageCount }
+
+        assertEquals(listOf(42L, 7L, 0L), counts)
     }
 
     @Test

@@ -35,3 +35,27 @@ enum class FontScaleChoice(val id: String, val label: String, val scale: Float) 
         fun fromId(id: String?): FontScaleChoice = entries.firstOrNull { it.id == id } ?: STANDARD
     }
 }
+
+
+/** 金额显示的货币。服务端给的是美元估算，人民币按设置里的汇率换算。 */
+enum class CurrencyChoice(val id: String, val label: String, val symbol: String) {
+    USD("usd", "美元", "$"),
+    CNY("cny", "人民币", "¥");
+
+    companion object {
+        fun fromId(id: String?): CurrencyChoice = entries.firstOrNull { it.id == id } ?: USD
+    }
+}
+
+/** Token 数字的单位：英文 K / M / B，或中文 万 / 亿。 */
+enum class UnitStyle(val id: String, val label: String) {
+    EN("en", "K / M / B"),
+    CN("cn", "万 / 亿");
+
+    companion object {
+        fun fromId(id: String?): UnitStyle = entries.firstOrNull { it.id == id } ?: EN
+    }
+}
+
+/** 默认汇率：1 美元 = 7.10 人民币。不联网拉实时汇率，用户可在设置里改。 */
+const val DEFAULT_CNY_PER_USD = 7.10

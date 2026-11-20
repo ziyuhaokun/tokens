@@ -123,7 +123,7 @@ fun SmallLabel(text: String, modifier: Modifier = Modifier, color: Color = Palet
 
 /**
  * 「$」小号灰 +「41」大号细体 +「.20」小号灰 —— 桌面端金额排版。
- * integer 以 $ 开头时自动把 $ 拆出来单独排；tokens 这类没有货币符号的照常显示。
+ * integer 以货币符号（$ / ¥）开头时自动把符号拆出来单独排；tokens 这类没有符号的照常显示。
  *
  * 几段必须对齐**基线**（alignByBaseline），不能用 Alignment.Bottom：
  * 底边对齐的是文字盒子的底，字号差一半时小字会整体沉到基线下。
@@ -135,8 +135,10 @@ fun BigMoney(
     modifier: Modifier = Modifier,
     size: TextUnit = TokensType.Display,
 ) {
-    val currency = if (integer.startsWith("$")) "$" else null
-    val digits = if (currency != null) integer.drop(1) else integer
+    // 开头的非数字部分就是货币符号（负号留在数字里）。
+    val prefix = integer.takeWhile { !it.isDigit() && it != '-' }
+    val currency = prefix.ifEmpty { null }
+    val digits = integer.drop(prefix.length)
     Row(modifier = modifier) {
         if (currency != null) {
             Text(
@@ -354,12 +356,13 @@ fun RankingRow(
     showSessions: Boolean = false,
     divider: Boolean = true,
 ) {
+    val nf = LocalNumberFormats.current
     val share = if (maxCost > 0.0) (row.cost / maxCost).toFloat().coerceIn(0f, 1f) else 0f
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
-                contentDescription = "${row.name}，${Fmt.money(row.cost)}，${Fmt.tokens(row.tokens)} tokens"
+                contentDescription = "${row.name}，${nf.money(row.cost)}，${nf.tokens(row.tokens)} tokens"
             },
     ) {
         Row(
@@ -386,14 +389,14 @@ fun RankingRow(
                 Spacer(Modifier.width(10.dp))
             }
             Text(
-                text = Fmt.money(row.cost),
+                text = nf.money(row.cost),
                 color = Palette.Text,
                 fontSize = TokensType.Value,
                 fontFamily = NumericFont,
             )
             Spacer(Modifier.width(12.dp))
             Text(
-                text = Fmt.tokens(row.tokens),
+                text = nf.tokens(row.tokens),
                 color = Palette.Dim,
                 fontSize = TokensType.Caption,
                 fontFamily = NumericFont,

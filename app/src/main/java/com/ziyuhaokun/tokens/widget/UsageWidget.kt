@@ -38,7 +38,7 @@ import com.ziyuhaokun.tokens.AppContainer
 import com.ziyuhaokun.tokens.data.AccentChoice
 import com.ziyuhaokun.tokens.data.ThemeMode
 import com.ziyuhaokun.tokens.ui.DarkTokensColors
-import com.ziyuhaokun.tokens.ui.Fmt
+import com.ziyuhaokun.tokens.data.NumberFormats
 import com.ziyuhaokun.tokens.ui.LightTokensColors
 import com.ziyuhaokun.tokens.ui.MainActivity
 import com.ziyuhaokun.tokens.ui.accentColor
@@ -147,15 +147,15 @@ private fun Content(s: WidgetSnapshot) {
             Spacer(GlanceModifier.height(12.dp))
 
             Row(modifier = GlanceModifier.fillMaxWidth()) {
-                MoneyBlock("今日", s.todayCost, palette, GlanceModifier.defaultWeight())
+                MoneyBlock("今日", s.todayCost, s.formats, palette, GlanceModifier.defaultWeight())
                 Spacer(GlanceModifier.width(14.dp))
-                MoneyBlock("7 天", s.weekCost, palette, GlanceModifier.defaultWeight())
+                MoneyBlock("7 天", s.weekCost, s.formats, palette, GlanceModifier.defaultWeight())
             }
 
             Spacer(GlanceModifier.height(6.dp))
 
             Text(
-                text = if (s.configured) "${s.weekTokens?.let { Fmt.tokens(it) } ?: "—"} tokens · 7 天" else (s.message ?: ""),
+                text = if (s.configured) "${s.weekTokens?.let { s.formats.tokens(it) } ?: "—"} tokens · 7 天" else (s.message ?: ""),
                 style = TextStyle(color = palette.tertiary, fontSize = LabelSize),
                 maxLines = 1,
             )
@@ -170,14 +170,16 @@ private fun Content(s: WidgetSnapshot) {
 private fun MoneyBlock(
     label: String,
     value: Double?,
+    formats: NumberFormats,
     palette: WidgetPalette,
     modifier: GlanceModifier,
 ) {
     // 没配置时显示占位符，不显示 $0.00 这种像真数字的东西。
     // "$" 单独一段小字：跟 App 里 BigMoney 一样「小号 $ + 大号整数 + 小号小数」。
-    val (integer, decimals) = if (value == null) "—" to "" else Fmt.moneyParts(value)
-    val currency = if (integer.startsWith("$")) "$" else null
-    val digits = if (currency != null) integer.drop(1) else integer
+    val (integer, decimals) = if (value == null) "—" to "" else formats.moneyParts(value)
+    val prefix = integer.takeWhile { !it.isDigit() && it != '-' && it != '—' }
+    val currency = prefix.ifEmpty { null }
+    val digits = integer.drop(prefix.length)
     Column(modifier = modifier) {
         Text(text = label, style = TextStyle(color = palette.tertiary, fontSize = LabelSize))
         Spacer(GlanceModifier.height(2.dp))

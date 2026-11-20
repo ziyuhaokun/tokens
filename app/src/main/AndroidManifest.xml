@@ -3,6 +3,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Android 9 及以下把图片写进公共 Pictures 目录需要它；10+ 走 MediaStore，不需要。 -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <application
         android:name=".TokensApp"
@@ -33,6 +37,17 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/usage_widget_info" />
         </receiver>
+
+        <!-- 小票分享：把 cacheDir/receipts 下的 PNG 以 content:// 递给别的 App。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.receipts"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/receipt_paths" />
+        </provider>
     </application>
 
 </manifest>

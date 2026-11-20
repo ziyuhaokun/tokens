@@ -1,6 +1,7 @@
 package com.ziyuhaokun.tokens.widget
 
 import com.ziyuhaokun.tokens.data.AccentChoice
+import com.ziyuhaokun.tokens.data.NumberFormats
 import com.ziyuhaokun.tokens.data.Range
 import com.ziyuhaokun.tokens.data.StoredSettings
 import com.ziyuhaokun.tokens.data.ThemeMode
@@ -27,6 +28,8 @@ data class WidgetSnapshot(
     /** 外观跟着 App 的设置走，小组件不再写死深色。 */
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val accent: AccentChoice = AccentChoice.MONO,
+    /** 货币 / token 单位，跟 App 设置一致。 */
+    val formats: NumberFormats = NumberFormats.DEFAULT,
 ) {
     companion object {
         val NOT_CONFIGURED = WidgetSnapshot(
@@ -64,6 +67,7 @@ object WidgetData {
             return WidgetSnapshot.NOT_CONFIGURED.copy(
                 themeMode = settings.themeMode,
                 accent = settings.accent,
+                formats = settings.numberFormats,
             )
         }
 
@@ -88,6 +92,7 @@ object WidgetData {
             message = null,
             themeMode = settings.themeMode,
             accent = settings.accent,
+            formats = settings.numberFormats,
         )
     }
 }

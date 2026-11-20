@@ -132,9 +132,9 @@ object TokensSpace {
 
 /**
  * 数字字体：等宽，跟桌面端「65.5M / 3h 12m / 9:00」那种排版一致。
- * 集中在这一处，以后换成打包进来的字体（如 JetBrains Mono）只改这一行。
+ * 直接用打包进来的 JetBrains Mono，见 [ReceiptFont]。
  */
-val NumericFont: FontFamily = FontFamily.Monospace
+val NumericFont: FontFamily = ReceiptFont
 
 /** 大字号时把多列改成单列。 */
 @Composable

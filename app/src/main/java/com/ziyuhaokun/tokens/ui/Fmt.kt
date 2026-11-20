@@ -1,38 +1,17 @@
 package com.ziyuhaokun.tokens.ui
 
+import androidx.compose.runtime.staticCompositionLocalOf
+import com.ziyuhaokun.tokens.data.NumberFormats
 import java.util.Locale
 
+/**
+ * 当前的数字显示方式（货币 / token 单位），由 MainActivity 按设置提供。
+ * 金额、token 一律走它：`val nf = LocalNumberFormats.current` 然后 `nf.money(...)`。
+ */
+val LocalNumberFormats = staticCompositionLocalOf { NumberFormats.DEFAULT }
+
+/** 与货币 / 单位无关的格式化：时长、时刻、多久之前。 */
 object Fmt {
-    /** 带千分位：$2,460.18。 */
-    fun money(value: Double): String = "$" + String.format(Locale.US, "%,.2f", value)
-
-    /** 拆成 "$578" + ".22"：大号整数 + 小号小数，桌面端那套排版。 */
-    fun moneyParts(value: Double): Pair<String, String> {
-        val text = String.format(Locale.US, "%,.2f", value)
-        val dot = text.indexOf('.')
-        return if (dot < 0) "$text" to ".00" else "$" + text.substring(0, dot) to text.substring(dot)
-    }
-
-    fun tokens(value: Long): String = when {
-        value >= 1_000_000_000 -> String.format(Locale.US, "%.2fB", value / 1e9)
-        value >= 1_000_000 -> String.format(Locale.US, "%.1fM", value / 1e6)
-        value >= 1_000 -> String.format(Locale.US, "%.1fK", value / 1e3)
-        else -> value.toString()
-    }
-
-    /**
-     * Token 量拆成「整数」+「小数与单位」两段，给大号数字排版用。
-     * "123.36B" → ("123", ".36B")；小于 1000 时没有单位，后半段为空。
-     * 不能直接 substringBefore('.')：那样会把小数和单位一起丢掉。
-     */
-    fun tokensParts(value: Long): Pair<String, String> {
-        val text = tokens(value)
-        val dot = text.indexOf('.')
-        if (dot >= 0) return text.substring(0, dot) to text.substring(dot)
-        val unit = text.lastOrNull()?.takeIf { it.isLetter() }
-        return if (unit != null) text.dropLast(1) to unit.toString() else text to ""
-    }
-
     /** "3h 12m" 这种，没有整点就只有分钟。 */
     fun duration(seconds: Long): String {
         val totalMinutes = (seconds / 60).toInt()

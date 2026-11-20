@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -80,6 +81,7 @@ fun DashboardScreen(
     onRange: (Range) -> Unit,
     onRefresh: () -> Unit,
     onSettings: () -> Unit,
+    onPrint: () -> Unit,
 ) {
     val usage = state.usage
     ScreenScaffold(refreshing = state.loading, onRefresh = onRefresh) {
@@ -108,7 +110,7 @@ fun DashboardScreen(
             val model = remember(usage, state.range) { buildModel(usage, state.range) }
             val totals = model.totals
 
-            HeroCard(range = state.range, totals = totals, chart = model.chart, loading = state.loading)
+            HeroCard(range = state.range, totals = totals, chart = model.chart, loading = state.loading, onPrint = onPrint)
 
             Spacer(Modifier.height(TokensSpace.CardGap))
             if (isLargeText()) {
@@ -184,16 +186,21 @@ private fun HeroCard(
     totals: UsageAgg.Totals,
     chart: ChartWindow,
     loading: Boolean,
+    onPrint: () -> Unit,
 ) {
-    val (integer, decimals) = Fmt.moneyParts(totals.cost)
+    val nf = LocalNumberFormats.current
+    val (integer, decimals) = nf.moneyParts(totals.cost)
     SoftCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             CardLabel(range.label)
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.width(8.dp))
             if (loading) SmallLabel("刷新中…")
+            Spacer(Modifier.weight(1f))
+            // 把当前范围打成一张可保存 / 分享的小票。右侧贴边，点击区域仍然 44dp。
+            TextAction(text = "打印小票", onClick = onPrint, modifier = Modifier.offset(x = 10.dp))
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
 
         val large = isLargeText()
         // 大字号下金额本身不再跟着放大（不然一行放不下），正文照常放大。
@@ -207,7 +214,7 @@ private fun HeroCard(
             SmallLabel("预估费用")
             Spacer(Modifier.height(12.dp))
             Row {
-                StatPair("Token", Fmt.tokens(totals.tokens))
+                StatPair("Token", nf.tokens(totals.tokens))
                 Spacer(Modifier.width(18.dp))
                 StatPair("活跃", Fmt.duration(totals.activeSeconds))
             }
@@ -221,7 +228,7 @@ private fun HeroCard(
                     horizontalAlignment = Alignment.Start,
                     modifier = Modifier.padding(bottom = 2.dp),
                 ) {
-                    StatPair("Token", Fmt.tokens(totals.tokens))
+                    StatPair("Token", nf.tokens(totals.tokens))
                     Spacer(Modifier.height(6.dp))
                     StatPair("活跃", Fmt.duration(totals.activeSeconds))
                 }
@@ -233,13 +240,14 @@ private fun HeroCard(
             values = chart.values,
             startLabel = chart.startLabel,
             endLabel = chart.endLabel,
-            description = "${range.label} 费用趋势，合计 ${Fmt.money(totals.cost)}",
+            description = "${range.label} 费用趋势，合计 ${nf.money(totals.cost)}",
         )
     }
 }
 
 @Composable
 private fun CacheCard(cachedInput: Long, tokens: Long, modifier: Modifier = Modifier) {
+    val nf = LocalNumberFormats.current
     val ratio = if (tokens > 0) (cachedInput.toFloat() / tokens.toFloat()) else 0f
     SoftCard(modifier = modifier, contentPadding = TokensSpace.CardPaddingCompact) {
         CardLabel("缓存读")
@@ -258,7 +266,7 @@ private fun CacheCard(cachedInput: Long, tokens: Long, modifier: Modifier = Modi
             Column {
                 SmallLabel("缓存读")
                 Text(
-                    text = Fmt.tokens(cachedInput),
+                    text = nf.tokens(cachedInput),
                     color = Palette.TextSoft,
                     fontSize = TokensType.Value,
                     fontFamily = NumericFont,
@@ -268,7 +276,7 @@ private fun CacheCard(cachedInput: Long, tokens: Long, modifier: Modifier = Modi
             Column(horizontalAlignment = Alignment.End) {
                 SmallLabel("总计")
                 Text(
-                    text = Fmt.tokens(tokens),
+                    text = nf.tokens(tokens),
                     color = Palette.TextSoft,
                     fontSize = TokensType.Value,
                     fontFamily = NumericFont,

@@ -35,6 +35,8 @@ data class Session(
     val activeSeconds: Long,
     /** 会话开始时间（毫秒）。服务端没给就为 0：热力图就没法按天摆放它。 */
     val startMillis: Long = 0L,
+    /** 这段会话里的消息条数；服务端没给就为 0。 */
+    val messageCount: Long = 0L,
 )
 
 data class UsageNames(
@@ -70,6 +72,7 @@ data class Usage(
                         project = it.optString("project", "unknown").ifBlank { "unknown" },
                         activeSeconds = it.optLong("activeSeconds", 0L),
                         startMillis = it.optString("firstMessageAt").toEpochMillis(),
+                        messageCount = it.optLong("messageCount", 0L),
                     )
                 },
                 hasAnyData = root.optBoolean("hasAnyData", false),

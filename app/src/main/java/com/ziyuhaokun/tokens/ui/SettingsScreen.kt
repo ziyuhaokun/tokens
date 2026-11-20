@@ -24,7 +24,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import java.math.BigDecimal
+import java.math.RoundingMode
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +55,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ziyuhaokun.tokens.data.AccentChoice
+import com.ziyuhaokun.tokens.data.CNY_RATE_RANGE
+import com.ziyuhaokun.tokens.data.CurrencyChoice
+import com.ziyuhaokun.tokens.data.DEFAULT_CNY_PER_USD
+import com.ziyuhaokun.tokens.data.UnitStyle
 import com.ziyuhaokun.tokens.data.FontScaleChoice
 import com.ziyuhaokun.tokens.data.StoredSettings
 import com.ziyuhaokun.tokens.data.ThemeMode
@@ -63,6 +80,9 @@ fun SettingsScreen(
     onAccent: (AccentChoice) -> Unit,
     onFontScale: (FontScaleChoice) -> Unit,
     onMotion: (Boolean) -> Unit,
+    onCurrency: (CurrencyChoice) -> Unit,
+    onCnyPerUsd: (Double) -> Unit,
+    onUnits: (UnitStyle) -> Unit,
     onSaveCredentials: (String, String) -> Unit,
     onDismissCredentials: () -> Unit,
     onSignOut: () -> Unit,
@@ -146,6 +166,48 @@ fun SettingsScreen(
             Spacer(Modifier.height(8.dp))
             Text(
                 text = "只作用于大金额、选中的标签、图表主线和热力图最亮档。选「单色」就是纯黑白。",
+                color = Palette.Dim,
+                fontSize = TokensType.Caption,
+                lineHeight = TokensType.Caption * 1.45f,
+            )
+        }
+
+        Spacer(Modifier.height(TokensSpace.CardGap))
+
+        // 数字显示：货币与 token 单位，首页 / 热力 / 小组件 / 小票一起生效。
+        val currency = settings?.currency ?: CurrencyChoice.USD
+        SettingsGroup("数字显示") {
+            SettingsRow("货币") {
+                SegmentedRow(
+                    options = CurrencyChoice.entries.map { it to it.label },
+                    selected = currency,
+                    onSelect = onCurrency,
+                )
+            }
+            if (currency == CurrencyChoice.CNY) {
+                HairlineDivider()
+                SettingsRow("汇率") {
+                    RateField(
+                        rate = settings?.cnyPerUsd ?: DEFAULT_CNY_PER_USD,
+                        onCommit = onCnyPerUsd,
+                    )
+                }
+            }
+            HairlineDivider()
+            SettingsRow("Token 单位") {
+                SegmentedRow(
+                    options = UnitStyle.entries.map { it to it.label },
+                    selected = settings?.units ?: UnitStyle.EN,
+                    onSelect = onUnits,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = if (currency == CurrencyChoice.CNY) {
+                    "服务端按美元估算费用，这里按上面的汇率换算成人民币，仅供参考。"
+                } else {
+                    "费用是服务端按美元估算的值。"
+                },
                 color = Palette.Dim,
                 fontSize = TokensType.Caption,
                 lineHeight = TokensType.Caption * 1.45f,
@@ -330,6 +392,58 @@ private fun <T> SegmentedRow(
  * 选中态不在色块上盖符号，改成外面套一圈 2dp 的正文色细环——
  * 任何色块上都看得见，也不用担心「✓」跟底色撞色。
  */
+/**
+ * 「1 USD = [7.10] CNY」。按完成或离开输入框时保存；
+ * 超出 [CNY_RATE_RANGE]（例如手滑输成 71）时标红、不保存。
+ */
+@Composable
+private fun RateField(rate: Double, onCommit: (Double) -> Unit) {
+    var text by remember(rate) { mutableStateOf(formatRate(rate)) }
+    val parsed = text.toDoubleOrNull()
+    val valid = parsed != null && parsed in CNY_RATE_RANGE
+    val focus = LocalFocusManager.current
+    fun commit() {
+        if (valid && parsed != rate) onCommit(parsed!!)
+    }
+    val shape = RoundedCornerShape(8.dp)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("1 USD =", color = Palette.Dim, fontSize = TokensType.Label, fontFamily = NumericFont)
+        Spacer(Modifier.width(8.dp))
+        BasicTextField(
+            value = text,
+            onValueChange = { input -> text = input.filter { it.isDigit() || it == '.' }.take(7) },
+            singleLine = true,
+            textStyle = TextStyle(
+                color = if (valid) Palette.Text else Palette.Warn,
+                fontSize = TokensType.Value,
+                fontFamily = NumericFont,
+                textAlign = TextAlign.End,
+            ),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = {
+                commit()
+                focus.clearFocus()
+            }),
+            cursorBrush = SolidColor(Palette.Text),
+            modifier = Modifier
+                .width(84.dp)
+                .heightIn(min = 40.dp)
+                .clip(shape)
+                .background(Palette.Field)
+                .border(1.dp, if (valid) Palette.Hairline else Palette.Warn, shape)
+                .padding(horizontal = 10.dp, vertical = 9.dp)
+                .onFocusChanged { if (!it.isFocused) commit() }
+                .semantics { contentDescription = "人民币汇率，1 美元兑 $text 人民币" },
+        )
+        Spacer(Modifier.width(8.dp))
+        Text("CNY", color = Palette.Dim, fontSize = TokensType.Label, fontFamily = NumericFont)
+    }
+}
+
+/** 7.1 → "7.1"，7.1234 → "7.1234"：最多 4 位小数，去掉末尾的 0。 */
+private fun formatRate(rate: Double): String =
+    BigDecimal(rate).setScale(4, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString()
+
 @Composable
 private fun AccentRow(selected: AccentChoice, onSelect: (AccentChoice) -> Unit) {
     val isDark = LocalTokensColors.current.isDark
