@@ -398,7 +398,7 @@ private fun AppTabSwitch(selected: AppTab, onSelect: (AppTab) -> Unit) {
             val isOn = entry == selected
             Box(
                 modifier = Modifier
-                    .heightIn(min = 36.dp)
+                    .heightIn(min = 38.dp)
                     .clip(RoundedCornerShape(9.dp))
                     .background(if (isOn) Palette.CardTop else Color.Transparent)
                     .then(if (isOn) Modifier.border(1.dp, Palette.Hairline, RoundedCornerShape(9.dp)) else Modifier)

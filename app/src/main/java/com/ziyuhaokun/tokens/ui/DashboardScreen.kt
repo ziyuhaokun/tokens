@@ -39,7 +39,12 @@ private class DashboardModel(
     val bySource: List<UsageAgg.Row>,
     val byModel: List<UsageAgg.Row>,
     val byProject: List<UsageAgg.Row>,
-)
+) {
+    // 排行卡只显示前几项。在模型里算一次，不要在每次重组里重新 take 出新列表（每次都是新对象，卡片就跟着白重组）。
+    val topSources: List<UsageAgg.Row> = bySource.take(6)
+    val topModels: List<UsageAgg.Row> = byModel.take(6)
+    val topProjects: List<UsageAgg.Row> = byProject.take(5)
+}
 
 /** 图上实际画哪一段 + 两端标签。 */
 private class ChartWindow(
@@ -153,14 +158,14 @@ fun DashboardScreen(
             Spacer(Modifier.height(TokensSpace.CardGap))
             RankingCard(
                 title = "按工具",
-                rows = model.bySource.take(6),
+                rows = model.topSources,
                 hint = "${totals.sources} 个来源",
             )
 
             Spacer(Modifier.height(TokensSpace.CardGap))
             RankingCard(
                 title = "按模型",
-                rows = model.byModel.take(6),
+                rows = model.topModels,
                 hint = "费用 / Tokens",
             )
 
@@ -169,7 +174,7 @@ fun DashboardScreen(
             Spacer(Modifier.height(TokensSpace.CardGap))
             RankingCard(
                 title = "按项目",
-                rows = projects.take(5),
+                rows = model.topProjects,
                 hint = if (onlyUnknown) "服务端未收集项目名" else "费用 / Sessions",
                 showSessions = !onlyUnknown,
                 footnote = if (onlyUnknown) {
@@ -257,7 +262,7 @@ private fun HeroCard(
             endLabel = chart.endLabel,
             // 顶部 22dp 留给峰值标签 / 按住查看的气泡，所以比原来的 126dp 高一些，曲线本身的高度基本不变。
             height = 146.dp,
-            description = "${range.label} 费用趋势，合计 ${nf.money(totals.cost)}，按住左右拖动查看每一天",
+            description = trendDescription(range.label, nf, totals.cost, chart.values, chart.pointLabels),
             pointLabels = chart.pointLabels,
             formatValue = { nf.money(it) },
         )
@@ -460,4 +465,26 @@ internal fun Footer(fetchedAt: Long?, stale: Boolean, loading: Boolean, onRefres
             enabled = !loading,
         )
     }
+}
+
+/**
+ * 趋势图给读屏用的整段描述。图本身只能靠手指按住拖动看每一天，读屏用户做不到，
+ * 所以把最关键的三个数——合计、最高（哪一天）、最新——直接写进描述里。
+ */
+internal fun trendDescription(
+    rangeLabel: String,
+    nf: com.ziyuhaokun.tokens.data.NumberFormats,
+    total: Double,
+    values: List<Double>,
+    labels: List<String>,
+): String {
+    val peakIndex = values.indices.maxByOrNull { values[it] }
+    val peak = if (peakIndex != null && values[peakIndex] > 0.0) {
+        val at = labels.getOrNull(peakIndex)?.takeIf { it.isNotBlank() }?.let { "（$it）" }.orEmpty()
+        "，最高 ${nf.money(values[peakIndex])}$at"
+    } else {
+        ""
+    }
+    val latest = values.lastOrNull()?.let { "，最新 ${nf.money(it)}" }.orEmpty()
+    return "$rangeLabel 费用趋势，合计 ${nf.money(total)}$peak$latest"
 }

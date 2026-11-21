@@ -34,7 +34,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -223,6 +227,10 @@ private fun HeatCard(data: YearData, metric: YearMetric, onMetric: (YearMetric) 
     val months = remember(data) { monthsOf(data) }
     // 标签字号随主题放大，行高和年份带也要跟着放大，否则大字号下月份会叠在一起。
     val textScale = LocalDensity.current.fontScale
+    // 月份标签列宽也要跟着字号放大：原来固定 34dp，大字号下「12月」会挤进格子里去。
+    val labelWidth = HeatLabelWidth * textScale.coerceAtLeast(1f)
+    // 读屏用户没法点小格子，给他们「前一天 / 后一天 / 最近一天」三个自定义操作。
+    val allDates = remember(months) { months.flatMap { it.second }.filterNotNull().sorted() }
 
     SoftCard(contentPadding = TokensSpace.CardPaddingCompact) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -243,7 +251,7 @@ private fun HeatCard(data: YearData, metric: YearMetric, onMetric: (YearMetric) 
         // 月份标签列 + 31 天的格子。格子边长按可用宽度算出来，
         // 底色、选中描边、点击命中都用同一份几何。
         BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val gridWidth = (maxWidth - HeatLabelWidth - HeatLabelGap).coerceAtLeast(HeatCellGap)
+            val gridWidth = (maxWidth - labelWidth - HeatLabelGap).coerceAtLeast(HeatCellGap)
             val cell = ((gridWidth - HeatCellGap * 30) / 31).coerceAtLeast(1.dp)
             val layout = remember(data, cell, textScale) {
                 heatGridLayout(months, cell, textScale, data.end.year)
@@ -253,7 +261,7 @@ private fun HeatCard(data: YearData, metric: YearMetric, onMetric: (YearMetric) 
             Column {
                 // 日期刻度：1 / 10 / 20 / 31，跟格子同列对齐。
                 Row {
-                    Spacer(Modifier.width(HeatLabelWidth + HeatLabelGap))
+                    Spacer(Modifier.width(labelWidth + HeatLabelGap))
                     for (day in 1..31) {
                         Box(
                             modifier = Modifier.weight(1f).height(tickHeight),
@@ -280,7 +288,7 @@ private fun HeatCard(data: YearData, metric: YearMetric, onMetric: (YearMetric) 
 
                 Row(Modifier.fillMaxWidth()) {
                     // 月份 / 年份标签列：行高和 Canvas 里那一行完全一致，所以天然对齐。
-                    Column(Modifier.width(HeatLabelWidth)) {
+                    Column(Modifier.width(labelWidth)) {
                         layout.rows.forEach { row ->
                             if (row.band > 0.dp) {
                                 Box(
@@ -317,7 +325,22 @@ private fun HeatCard(data: YearData, metric: YearMetric, onMetric: (YearMetric) 
                             .width(gridWidth)
                             .height(layout.height)
                             .semantics {
-                                contentDescription = "过去一年每日用量热力图，${data.activeDays} 天有用量"
+                                contentDescription = "过去一年每日用量热力图，${data.activeDays} 天有用量。" +
+                                    "可用自定义操作逐日选择，当天明细会在下方读出"
+                                customActions = listOf(
+                                    CustomAccessibilityAction("选中前一天") {
+                                        selected = stepDate(allDates, selected, -1)
+                                        true
+                                    },
+                                    CustomAccessibilityAction("选中后一天") {
+                                        selected = stepDate(allDates, selected, 1)
+                                        true
+                                    },
+                                    CustomAccessibilityAction("选中最近一天") {
+                                        selected = allDates.lastOrNull()
+                                        true
+                                    },
+                                )
                             }
                             .pointerInput(data, cell, textScale) {
                                 detectTapGestures { offset ->
@@ -403,7 +426,7 @@ private fun MetricSwitch(selected: YearMetric, onSelect: (YearMetric) -> Unit) {
             val isOn = metric == selected
             Box(
                 modifier = Modifier
-                    .heightIn(min = 36.dp)
+                    .heightIn(min = 38.dp)
                     .clip(RoundedCornerShape(9.dp))
                     .background(if (isOn) Palette.CardTop else Color.Transparent)
                     .then(if (isOn) Modifier.border(1.dp, Palette.Hairline, RoundedCornerShape(9.dp)) else Modifier)
@@ -461,7 +484,11 @@ private fun DayDetail(date: LocalDate?, entry: DayUsage?, metric: YearMetric) {
     val cost = entry?.cost ?: 0.0
     val tokens = entry?.tokens ?: 0L
     val active = entry?.activeSeconds ?: 0L
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    // liveRegion：选中的日期变了，读屏会自动把这一行读出来。
+    Row(
+        modifier = Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Text(
             text = date.format(DateTimeFormatter.ofPattern("M月d日 EEE", Locale.CHINA)),
             color = Palette.TextSoft,
@@ -560,3 +587,14 @@ internal fun monthsOf(data: YearData): List<Pair<Int, List<LocalDate?>>> {
     }
 }
 
+
+/**
+ * 在按时间升序的日期里把当前选中日移动 [delta] 天（到头就停在头 / 尾）。
+ * 还没选中任何一天时：往前从最后一天开始，往后从第一天开始。
+ */
+internal fun stepDate(dates: List<LocalDate>, current: LocalDate?, delta: Int): LocalDate? {
+    if (dates.isEmpty()) return null
+    val index = current?.let { dates.indexOf(it) } ?: -1
+    if (index < 0) return if (delta < 0) dates.last() else dates.first()
+    return dates[(index + delta).coerceIn(0, dates.lastIndex)]
+}
