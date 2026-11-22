@@ -46,6 +46,28 @@ fun normalizeBaseUrl(raw: String): String? {
         .trimEnd('/')
 }
 
+/**
+ * 读取设置时把地址和 key 一起决定：地址无效就绝不带着旧 key 换到默认域名。
+ * 旧版本可能存过 http:// 的自建地址，升级后归一化会失败；这时 key 必须同步失效。
+ */
+internal data class ResolvedCredentials(
+    val apiKey: String?,
+    val baseUrl: String,
+    val serverAddressInvalid: Boolean,
+)
+
+internal fun resolveStoredCredentials(
+    keyBlob: String?,
+    rawBaseUrl: String?,
+    decrypt: (String) -> String?,
+): ResolvedCredentials {
+    val normalized = normalizeBaseUrl(rawBaseUrl ?: "")
+    if (normalized == null) {
+        return ResolvedCredentials(null, DEFAULT_BASE_URL, serverAddressInvalid = true)
+    }
+    return ResolvedCredentials(keyBlob?.let(decrypt), normalized, serverAddressInvalid = false)
+}
+
 /** 汇率允许的范围：防止输错一位数把所有金额放大十倍。 */
 val CNY_RATE_RANGE = 1.0..20.0
 
@@ -54,6 +76,8 @@ private val Context.tokensDataStore: DataStore<Preferences> by preferencesDataSt
 data class StoredSettings(
     val apiKey: String?,
     val baseUrl: String,
+    /** 旧版存下的地址无法归一化；此时 apiKey 被丢弃，必须重新配置。 */
+    val serverAddressInvalid: Boolean = false,
     val range: Range,
     val uploadProject: Boolean?,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -136,10 +160,17 @@ class SettingsStore(private val context: Context) {
         // prefs 文件损坏 / IO 失败时退回空设置（引导页），不要抛未捕获异常崩掉应用。
         .catch { emit(emptyPreferences()) }
         .map { prefs ->
+        // 旧版本写进来的 http:// 地址在读取时也要拦住：地址无效就连 key 一起失效，
+        // 不能因为「存的时候没问题」就带着旧 key 换到默认域名。
+        val credentials = resolveStoredCredentials(
+            keyBlob = prefs[Keys.apiKeyBlob],
+            rawBaseUrl = prefs[Keys.baseUrl],
+            decrypt = ::decryptCached,
+        )
         StoredSettings(
-            apiKey = decryptCached(prefs[Keys.apiKeyBlob]),
-            // 旧版本写进来的 http:// 地址在读取时也要拦住，不能因为「存的时候没问题」就一直带 key 发过去。
-            baseUrl = normalizeBaseUrl(prefs[Keys.baseUrl] ?: "") ?: DEFAULT_BASE_URL,
+            apiKey = credentials.apiKey,
+            baseUrl = credentials.baseUrl,
+            serverAddressInvalid = credentials.serverAddressInvalid,
             range = Range.fromId(prefs[Keys.rangeId]),
             uploadProject = prefs[Keys.uploadProject],
             themeMode = ThemeMode.fromId(prefs[Keys.themeMode]),

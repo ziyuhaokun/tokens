@@ -139,9 +139,17 @@ object TokensSpace {
  */
 val NumericFont: FontFamily = ReceiptFont
 
-/** 大字号时把多列改成单列。 */
+/**
+ * 大字号时把多列改成单列。
+ * 读 LocalDensity：它已经叠了系统 fontScale 和 App 内的字号倍率，
+ * 只认 App 倍率会让纯系统大字号用户进不了大字号布局。
+ */
 @Composable
-fun isLargeText(): Boolean = LocalFontScale.current > 1.05f
+fun isLargeText(): Boolean = largeText(LocalDensity.current.fontScale)
+
+/** 金额进一步缩小用的更粗阈值，同样按最终生效字号判断。 */
+@Composable
+fun isExtraLargeText(): Boolean = extraLargeText(LocalDensity.current.fontScale)
 
 /**
  * 颜色入口。保留 `Palette.Text` 这种写法，内部从主题取，

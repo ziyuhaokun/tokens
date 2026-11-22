@@ -90,6 +90,11 @@ class DashboardViewModel(
                             error = null,
                             stale = false,
                             loading = false,
+                            saveError = if (stored.serverAddressInvalid) {
+                                "服务器地址无效，请重新配置"
+                            } else {
+                                it.saveError
+                            },
                         )
                     }
                     return@collect
@@ -248,7 +253,14 @@ class DashboardViewModel(
 
     /** 退出：清 key、清缓存、撤后台任务、让小组件回到「去配置」。 */
     fun signOut() {
+        // 当前 UI 下登录/保存只出现在未配置引导页，退出只在已配置设置页；
+        // 这里仍一并取消，防止以后加入口后出现「退出后账号又写回来」。
         inflight?.cancel()
+        loginJob?.cancel()
+        loginJob = null
+        saveJob?.cancel()
+        saveJob = null
+        _state.update { it.copy(login = LoginPhase.Idle, saving = false) }
         viewModelScope.launch {
             repository.signOut()
             widgetSync.onCredentialsChanged(configured = false)

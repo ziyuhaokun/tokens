@@ -220,7 +220,7 @@ private fun HeroCard(
         // 大字号下金额本身不再跟着放大（不然一行放不下），正文照常放大。
         val moneySize = when {
             !large -> TokensType.Display
-            LocalFontScale.current >= 1.3f -> 32.sp
+            isExtraLargeText() -> 32.sp
             else -> 38.sp
         }
         // 金额整数段（含符号和千分位）到 7 个字符（例如 ¥274,240）就不再和右侧统计挤一行：
