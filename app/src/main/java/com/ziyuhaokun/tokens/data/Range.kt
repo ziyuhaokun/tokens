@@ -27,21 +27,27 @@ enum class Range(val id: String, val label: String, val days: Int) {
      */
     val cacheId: String get() = if (this == D365) UsageRepository.YEAR_CACHE_KEY else id
 
-    fun params(zone: ZoneId = ZoneId.systemDefault()): Map<String, String> = when (this) {
-        TODAY -> mapOf("from" to ZonedDateTime.now(zone).toLocalDate().atStartOfDay(zone).toInstant().toString())
+    fun params(
+        zone: ZoneId = ZoneId.systemDefault(),
+        now: ZonedDateTime = ZonedDateTime.now(zone),
+    ): Map<String, String> = when (this) {
+        TODAY -> mapOf("from" to now.toLocalDate().atStartOfDay(zone).toInstant().toString())
         H24 -> mapOf("days" to "1")
         D7 -> mapOf("days" to "7")
         D30 -> mapOf("days" to "30")
         D90 -> mapOf("days" to "90")
-        D180, D365 -> dateWindow(days, zone)
+        D180, D365 -> dateWindow(days, zone, now.toLocalDate())
     }
 
     companion object {
         fun fromId(id: String?): Range = entries.firstOrNull { it.id == id } ?: D7
 
         /** 含今天在内往前 [days] 天：from = 今天 - (days-1)，to = 今天。 */
-        fun dateWindow(days: Int, zone: ZoneId = ZoneId.systemDefault()): Map<String, String> {
-            val today = LocalDate.now(zone)
+        fun dateWindow(
+            days: Int,
+            zone: ZoneId = ZoneId.systemDefault(),
+            today: LocalDate = LocalDate.now(zone),
+        ): Map<String, String> {
             return mapOf(
                 "from" to today.minusDays((days - 1).toLong()).toString(),
                 "to" to today.toString(),

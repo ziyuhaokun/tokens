@@ -22,6 +22,7 @@ internal class UsageFetchCoordinator(
     private val fetch: suspend (baseUrl: String, apiKey: String, params: Map<String, String>, zone: ZoneId) -> Usage,
     private val readCache: suspend (scope: String, cacheId: String) -> CacheEntry?,
     private val writeCache: suspend (scope: String, cacheId: String, json: String, fetchedAt: Long) -> Unit,
+    private val now: () -> Long = { System.currentTimeMillis() },
 ) {
     private val gate = Mutex()
     private var generation = 0
@@ -71,7 +72,7 @@ internal class UsageFetchCoordinator(
         val seen = gate.withLock { generation }
         return try {
             val usage = fetch(baseUrl, apiKey, params, zone)
-            val at = System.currentTimeMillis()
+            val at = now()
             // 和 invalidate 互斥：要么写在作废之前（随后 clearAll 会删掉），要么直接不写。
             gate.withLock {
                 if (generation == seen) writeCache(scope, cacheId, usage.rawJson, at)

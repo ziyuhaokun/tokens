@@ -81,7 +81,7 @@ class UpdateManager(
             if (!_state.compareAndSet(UpdateState.Idle, UpdateState.Checking)) return@launch
             // 新进程里不会有上一次留下的下载状态，旧的安装包 / 半截文件顺手清掉。
             updatesDir.deleteRecursively()
-            check(manual = false)
+            check(manual = false, now = now)
         }
     }
 
@@ -91,14 +91,14 @@ class UpdateManager(
         if (current is UpdateState.Checking || current is UpdateState.Downloading) return
         // 原子切换：连点两次只有第一次能进来，不会并发发出两次请求。
         if (!_state.compareAndSet(current, UpdateState.Checking)) return
-        scope.launch { check(manual = true) }
+        scope.launch { check(manual = true, now = System.currentTimeMillis()) }
     }
 
     /** 调用方已经把状态原子地切到了 [UpdateState.Checking]。 */
-    private suspend fun check(manual: Boolean) {
+    private suspend fun check(manual: Boolean, now: Long = System.currentTimeMillis()) {
         try {
             val info = api.fetchLatest()
-            settings.saveLastUpdateCheck(System.currentTimeMillis())
+            settings.saveLastUpdateCheck(now)
             if (info != null && UpdateLogic.isNewer(info.version, currentVersion)) {
                 _state.value = UpdateState.Available(info)
                 val skipped = settings.snapshot().skippedVersion

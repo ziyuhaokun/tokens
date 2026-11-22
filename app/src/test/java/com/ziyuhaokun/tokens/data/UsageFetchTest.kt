@@ -196,6 +196,15 @@ class UsageFetchTest {
     }
 
     @Test
+    fun `fetchedAt comes from injected clock`() = runBlocking {
+        val coordinator = coordinator(now = { 9_999L })
+
+        val snapshot = coordinator.load(settings(), "7d", emptyMap(), zone)
+
+        assertEquals(9_999L, snapshot.fetchedAt)
+    }
+
+    @Test
     fun `cached read drops the raw json`() = runBlocking {
         val coordinator = coordinator(read = { _, _ -> CacheEntry("{}", 5L) })
 
@@ -226,9 +235,11 @@ class UsageFetchTest {
         fetch: suspend () -> Usage = { usage() },
         read: suspend (String, String) -> CacheEntry? = { _, _ -> null },
         write: suspend (String, String, String, Long) -> Unit = { _, _, _, _ -> },
+        now: () -> Long = { 1_234L },
     ) = UsageFetchCoordinator(
         fetch = { _, _, _, _ -> fetch() },
         readCache = read,
         writeCache = write,
+        now = now,
     )
 }

@@ -64,7 +64,6 @@ import com.ziyuhaokun.tokens.ui.MainActivity
 import com.ziyuhaokun.tokens.ui.accentColor
 import com.ziyuhaokun.tokens.ui.drawUsageArea
 import java.text.SimpleDateFormat
-import java.time.LocalDate
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -676,12 +675,6 @@ private fun chartHeight(
             4 + line(11f) + 10 + line(11f) + 4 + 3 * line(13f) + 8
     }
     return (cardHeight - reserved).coerceIn(0f, 220f)
-}
-
-/** 7 天窗口的起点日期，跟 UsageAgg.trend 的标签口径一致（「11-14」）。 */
-private fun trendStartLabel(): String {
-    val day = LocalDate.now().minusDays(6)
-    return "${day.monthValue}-${day.dayOfMonth}"
 }
 
 private fun refreshHint(s: WidgetSnapshot): String {

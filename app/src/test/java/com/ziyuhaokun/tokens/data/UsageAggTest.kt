@@ -11,6 +11,7 @@ class UsageAggTest {
 
     private val zone: ZoneId = ZoneId.of("Asia/Shanghai")
     private val today: LocalDate = LocalDate.of(2026, 11, 20)
+    private val fixedNow = ZonedDateTime.of(2026, 11, 20, 10, 30, 0, 0, zone)
 
     private fun bucket(
         source: String,
@@ -112,30 +113,30 @@ class UsageAggTest {
     fun `trend length matches each range`() {
         val empty = usage()
 
-        assertEquals(24, UsageAgg.trend(empty, Range.TODAY, zone).size)
-        assertEquals(24, UsageAgg.trend(empty, Range.H24, zone).size)
-        assertEquals(7, UsageAgg.trend(empty, Range.D7, zone).size)
-        assertEquals(30, UsageAgg.trend(empty, Range.D30, zone).size)
-        assertEquals(90, UsageAgg.trend(empty, Range.D90, zone).size)
-        assertEquals(180, UsageAgg.trend(empty, Range.D180, zone).size)
-        assertEquals(365, UsageAgg.trend(empty, Range.D365, zone).size)
+        assertEquals(24, UsageAgg.trend(empty, Range.TODAY, zone, fixedNow).size)
+        assertEquals(24, UsageAgg.trend(empty, Range.H24, zone, fixedNow).size)
+        assertEquals(7, UsageAgg.trend(empty, Range.D7, zone, fixedNow).size)
+        assertEquals(30, UsageAgg.trend(empty, Range.D30, zone, fixedNow).size)
+        assertEquals(90, UsageAgg.trend(empty, Range.D90, zone, fixedNow).size)
+        assertEquals(180, UsageAgg.trend(empty, Range.D180, zone, fixedNow).size)
+        assertEquals(365, UsageAgg.trend(empty, Range.D365, zone, fixedNow).size)
     }
 
     @Test
     fun `today trend labels are the 24 hours of the day`() {
-        val labels = UsageAgg.trend(usage(), Range.TODAY, zone).map { it.label }
+        val labels = UsageAgg.trend(usage(), Range.TODAY, zone, fixedNow).map { it.label }
 
         assertEquals((0..23).map { "%02d".format(it) }, labels)
     }
 
     @Test
     fun `today trend puts a bucket in the label matching its hour`() {
-        val now = ZonedDateTime.now(zone)
         val point = UsageAgg.trend(
-            usage(listOf(bucket("cli", date = now.toLocalDate(), hour = now.hour, cost = 0.5, input = 7))),
+            usage(listOf(bucket("cli", date = today, hour = fixedNow.hour, cost = 0.5, input = 7))),
             Range.TODAY,
             zone,
-        ).single { it.label == "%02d".format(now.hour) }
+            fixedNow,
+        ).single { it.label == "%02d".format(fixedNow.hour) }
 
         assertEquals(0.5, point.cost, 1e-9)
         assertEquals(7L, point.tokens)
@@ -144,9 +145,10 @@ class UsageAggTest {
     @Test
     fun `daily trend labels are month day pairs and every bucket today is counted`() {
         val points = UsageAgg.trend(
-            usage(listOf(bucket("cli", date = LocalDate.now(zone), cost = 0.5, input = 7))),
+            usage(listOf(bucket("cli", date = today, cost = 0.5, input = 7))),
             Range.D7,
             zone,
+            fixedNow,
         )
 
         assertEquals(7, points.size)

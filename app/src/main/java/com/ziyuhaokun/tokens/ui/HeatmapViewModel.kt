@@ -37,7 +37,11 @@ data class HeatmapState(
  * 跟着设置流走：换 key / 换服务器 / 退出登录时清空并按新身份重拉，
  * 不能只在第一次读一下 settings 就一直用下去。
  */
-class HeatmapViewModel(private val repository: UsageRepository) : ViewModel() {
+class HeatmapViewModel(
+    private val repository: UsageRepository,
+    private val now: () -> Long = { System.currentTimeMillis() },
+    private val today: (ZoneId) -> LocalDate = { LocalDate.now(it) },
+) : ViewModel() {
 
     private val _state = MutableStateFlow(HeatmapState())
     val state: StateFlow<HeatmapState> = _state.asStateFlow()
@@ -66,7 +70,7 @@ class HeatmapViewModel(private val repository: UsageRepository) : ViewModel() {
     fun onShown() {
         visible = true
         val current = _state.value
-        val fresh = current.data != null && System.currentTimeMillis() - loadedAt < STALE_AFTER_MS
+        val fresh = current.data != null && now() - loadedAt < STALE_AFTER_MS
         if (fresh && !current.stale) return
         if (inflight?.isActive == true) return
         load()
@@ -109,7 +113,7 @@ class HeatmapViewModel(private val repository: UsageRepository) : ViewModel() {
 
             val snapshot = repository.loadYear(stored, zone)
             val data = build(snapshot.usage, zone)
-            loadedAt = System.currentTimeMillis()
+            loadedAt = now()
             _state.update {
                 it.copy(
                     accountHandle = snapshot.usage?.accountHandle ?: it.accountHandle,
@@ -125,7 +129,7 @@ class HeatmapViewModel(private val repository: UsageRepository) : ViewModel() {
 
     /** 365 天聚合放到后台线程，别在主线程上折腾 1.5MB 的数据。 */
     private suspend fun build(usage: Usage?, zone: ZoneId): YearData? =
-        usage?.let { withContext(Dispatchers.Default) { YearAgg.build(it, LocalDate.now(zone), zone) } }
+        usage?.let { withContext(Dispatchers.Default) { YearAgg.build(it, today(zone), zone) } }
 
     companion object {
         private const val STALE_AFTER_MS = 10 * 60 * 1000L

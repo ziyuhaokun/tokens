@@ -4,28 +4,40 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZonedDateTime
 
 class RangeTest {
 
     private val zone = ZoneId.of("Asia/Shanghai")
+    private val now = ZonedDateTime.of(2026, 11, 20, 23, 59, 0, 0, zone)
 
     @Test
     fun `long ranges request an inclusive from-to window`() {
-        val today = LocalDate.now(zone)
+        val today = now.toLocalDate()
         assertEquals(
             mapOf("from" to today.minusDays(179).toString(), "to" to today.toString()),
-            Range.D180.params(zone),
+            Range.D180.params(zone, now),
         )
         assertEquals(
             mapOf("from" to today.minusDays(364).toString(), "to" to today.toString()),
-            Range.D365.params(zone),
+            Range.D365.params(zone, now),
         )
+    }
+
+    @Test
+    fun `today from is local midnight of the injected day`() {
+        val midnight = LocalDate.of(2026, 11, 20).atStartOfDay(zone).toInstant().toString()
+
+        assertEquals(mapOf("from" to midnight), Range.TODAY.params(zone, now))
     }
 
     @Test
     fun `365D shares the heatmap year cache and window`() {
         assertEquals(UsageRepository.YEAR_CACHE_KEY, Range.D365.cacheId)
-        assertEquals(Range.dateWindow(YearAgg.DAYS, zone), Range.D365.params(zone))
+        assertEquals(
+            Range.dateWindow(YearAgg.DAYS, zone, now.toLocalDate()),
+            Range.D365.params(zone, now),
+        )
         assertEquals("180D", Range.D180.cacheId)
     }
 

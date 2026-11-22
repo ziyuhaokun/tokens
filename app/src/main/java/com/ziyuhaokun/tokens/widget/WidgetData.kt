@@ -1,6 +1,7 @@
 package com.ziyuhaokun.tokens.widget
 
 import com.ziyuhaokun.tokens.data.AccentChoice
+import com.ziyuhaokun.tokens.data.CacheEntry
 import com.ziyuhaokun.tokens.data.NumberFormats
 import com.ziyuhaokun.tokens.data.Range
 import com.ziyuhaokun.tokens.data.StoredSettings
@@ -14,6 +15,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.mapLatest
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /** 大尺寸里「按工具 · 7 天」的一行。costUsd 是美元原值，显示时走 NumberFormats 换算。 */
 data class WidgetToolRow(val name: String, val costUsd: Double)
@@ -71,6 +75,62 @@ data class WidgetSnapshot(
     }
 }
 
+/** 小组件用的一份缓存：解析后的用量 + 写入时刻。 */
+internal data class WidgetUsageEntry(val usage: Usage, val fetchedAt: Long)
+
+/** 未配置 key：不露任何旧数字，但外观仍跟用户设置走。 */
+internal fun widgetNotConfigured(settings: StoredSettings): WidgetSnapshot =
+    WidgetSnapshot.NOT_CONFIGURED.copy(
+        themeMode = settings.themeMode,
+        accent = settings.accent,
+        formats = settings.numberFormats,
+    )
+
+/** 坏 JSON 当作没缓存，不让小组件因为一份坏文件崩掉。 */
+internal fun parseWidgetEntry(entry: CacheEntry?): WidgetUsageEntry? =
+    entry?.let { cache ->
+        runCatching { Usage.parse(cache.json) }.getOrNull()
+            ?.let { WidgetUsageEntry(it, cache.fetchedAt) }
+    }
+
+/** 7 天窗口左端日期，跟 UsageAgg.trend 的标签口径一致（「11-14」）。 */
+internal fun trendStartLabel(today: LocalDate = LocalDate.now()): String {
+    val day = today.minusDays(6)
+    return "${day.monthValue}-${day.dayOfMonth}"
+}
+
+/**
+ * 缓存 → 小组件快照的纯映射。[now]/[zone] 可注入，方便锁住跨零点和窗口边界。
+ */
+internal fun mapWidgetSnapshot(
+    settings: StoredSettings,
+    today: WidgetUsageEntry?,
+    week: WidgetUsageEntry?,
+    zone: ZoneId = ZoneId.systemDefault(),
+    now: ZonedDateTime = ZonedDateTime.now(zone),
+): WidgetSnapshot {
+    val weekUsage = week?.usage
+    val weekTotals = weekUsage?.let { UsageAgg.totals(it) }
+    return WidgetSnapshot(
+        configured = true,
+        handle = today?.usage?.accountHandle ?: weekUsage?.accountHandle,
+        todayCost = today?.usage?.let { UsageAgg.totals(it).cost },
+        weekCost = weekTotals?.cost,
+        weekTokens = weekTotals?.tokens,
+        trend = weekUsage?.let { usage ->
+            UsageAgg.trend(usage, Range.D7, zone, now).map { it.cost }
+        } ?: emptyList(),
+        updatedAt = maxOf(today?.fetchedAt ?: 0L, week?.fetchedAt ?: 0L).takeIf { it > 0 },
+        message = null,
+        topTools = weekUsage?.let { usage ->
+            UsageAgg.bySource(usage).take(3).map { WidgetToolRow(name = it.name, costUsd = it.cost) }
+        } ?: emptyList(),
+        themeMode = settings.themeMode,
+        accent = settings.accent,
+        formats = settings.numberFormats,
+    )
+}
+
 /** 小组件只读缓存，不自己发请求；刷新由 RefreshAction / Worker 负责。 */
 object WidgetData {
 
@@ -89,39 +149,10 @@ object WidgetData {
 
     private suspend fun read(repository: UsageRepository, settings: StoredSettings): WidgetSnapshot {
         // 没配 key（包括刚退出登录）：不显示任何旧数字，但外观仍按用户设置来。
-        if (!settings.configured) {
-            return WidgetSnapshot.NOT_CONFIGURED.copy(
-                themeMode = settings.themeMode,
-                accent = settings.accent,
-                formats = settings.numberFormats,
-            )
-        }
+        if (!settings.configured) return widgetNotConfigured(settings)
 
-        val today = repository.readCacheRaw(Range.TODAY, settings)?.let { entry ->
-            runCatching { Usage.parse(entry.json) }.getOrNull()?.let { it to entry.fetchedAt }
-        }
-        val week = repository.readCacheRaw(Range.D7, settings)?.let { entry ->
-            runCatching { Usage.parse(entry.json) }.getOrNull()?.let { it to entry.fetchedAt }
-        }
-        val weekUsage = week?.first
-        val weekTotals = weekUsage?.let { UsageAgg.totals(it) }
-        return WidgetSnapshot(
-            configured = true,
-            handle = today?.first?.accountHandle ?: weekUsage?.accountHandle,
-            todayCost = today?.first?.let { usage -> UsageAgg.totals(usage).cost },
-            weekCost = weekTotals?.cost,
-            weekTokens = weekTotals?.tokens,
-            trend = weekUsage?.let { usage ->
-                UsageAgg.trend(usage, Range.D7).map { it.cost }
-            } ?: emptyList(),
-            updatedAt = maxOf(today?.second ?: 0L, week?.second ?: 0L).takeIf { it > 0 },
-            message = null,
-            topTools = weekUsage?.let { usage ->
-                UsageAgg.bySource(usage).take(3).map { WidgetToolRow(name = it.name, costUsd = it.cost) }
-            } ?: emptyList(),
-            themeMode = settings.themeMode,
-            accent = settings.accent,
-            formats = settings.numberFormats,
-        )
+        val today = parseWidgetEntry(repository.readCacheRaw(Range.TODAY, settings))
+        val week = parseWidgetEntry(repository.readCacheRaw(Range.D7, settings))
+        return mapWidgetSnapshot(settings, today, week)
     }
 }

@@ -115,8 +115,16 @@ object RefreshScheduler {
     }
 }
 
+/** 距上次刷新不足 minInterval 就跳过；抽成纯函数好锁住 60s 节流边界。 */
+internal fun shouldThrottleRefresh(now: Long, last: Long, minIntervalMillis: Long): Boolean =
+    minIntervalMillis > 0 && now - last < minIntervalMillis
+
 /** 账号状态变化后统一收尾：排 / 撤后台任务，并让小组件重画。 */
-class WidgetSync(private val context: Context, private val repository: UsageRepository) {
+class WidgetSync(
+    private val context: Context,
+    private val repository: UsageRepository,
+    private val now: () -> Long = { System.currentTimeMillis() },
+) {
     private val refreshLock = Mutex()
     private val refreshPrefs by lazy {
         context.getSharedPreferences("widget-refresh", Context.MODE_PRIVATE)
@@ -129,9 +137,9 @@ class WidgetSync(private val context: Context, private val repository: UsageRepo
      * null 表示「已有请求在跑」或「距上次刷新不足 [minIntervalMillis]」——两种都当作成功。
      */
     suspend fun refresh(minIntervalMillis: Long = MIN_REFRESH_INTERVAL_MS): RefreshOutcome? {
-        if (minIntervalMillis > 0) {
-            val last = refreshPrefs.getLong(KEY_LAST_REFRESH, 0L)
-            if (System.currentTimeMillis() - last < minIntervalMillis) return null
+        val current = now()
+        if (shouldThrottleRefresh(current, refreshPrefs.getLong(KEY_LAST_REFRESH, 0L), minIntervalMillis)) {
+            return null
         }
         if (!refreshLock.tryLock()) return null
         val outcome = try {
@@ -141,7 +149,7 @@ class WidgetSync(private val context: Context, private val repository: UsageRepo
             repository.refreshForWidget()
         } finally {
             _refreshing.value = false
-            refreshPrefs.edit().putLong(KEY_LAST_REFRESH, System.currentTimeMillis()).apply()
+            refreshPrefs.edit().putLong(KEY_LAST_REFRESH, now()).apply()
             refreshLock.unlock()
         }
         redraw()

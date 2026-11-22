@@ -57,6 +57,7 @@ data class DashboardState(
 class DashboardViewModel(
     private val repository: UsageRepository,
     private val widgetSync: WidgetSync,
+    private val now: () -> Long = { System.currentTimeMillis() },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(DashboardState())
@@ -145,7 +146,7 @@ class DashboardViewModel(
     /** 回到前台：刚拉过（1 分钟内）或正在拉就不重复请求。 */
     fun onResume() {
         if (inflight?.isActive == true) return
-        if (System.currentTimeMillis() - lastLoadedAt < RESUME_REFRESH_AFTER_MS) return
+        if (now() - lastLoadedAt < RESUME_REFRESH_AFTER_MS) return
         refresh()
     }
 
@@ -184,7 +185,7 @@ class DashboardViewModel(
                 _state.update { it.copy(login = LoginPhase.Failed(e.message ?: "无法开始登录")) }
                 return@launch
             }
-            val expiresAt = System.currentTimeMillis() + request.expiresInSeconds * 1000L
+            val expiresAt = now() + request.expiresInSeconds * 1000L
             _state.update {
                 it.copy(
                     login = LoginPhase.Waiting(
@@ -206,7 +207,7 @@ class DashboardViewModel(
     }
 
     private suspend fun pollUntilApproved(baseUrl: String, request: DeviceLoginRequest, expiresAt: Long) {
-        while (System.currentTimeMillis() < expiresAt) {
+        while (now() < expiresAt) {
             delay(request.intervalSeconds * 1000L)
             val result = try {
                 repository.pollDeviceLogin(baseUrl, request.deviceCode)
@@ -291,7 +292,7 @@ class DashboardViewModel(
 
     private suspend fun fetch(range: Range, stored: StoredSettings) {
         val result = repository.load(range, stored)
-        lastLoadedAt = System.currentTimeMillis()
+        lastLoadedAt = now()
         _state.update {
             if (it.range != range) {
                 it

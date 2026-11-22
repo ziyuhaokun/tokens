@@ -77,8 +77,12 @@ object UsageAgg {
     }
 
     /** 今天/24H 走小时粒度，其余走天粒度；返回与范围严格对齐的定长序列。 */
-    fun trend(usage: Usage, range: Range, zone: ZoneId = ZoneId.systemDefault()): List<TrendPoint> {
-        val now = ZonedDateTime.now(zone)
+    fun trend(
+        usage: Usage,
+        range: Range,
+        zone: ZoneId = ZoneId.systemDefault(),
+        now: ZonedDateTime = ZonedDateTime.now(zone),
+    ): List<TrendPoint> {
         val cost = HashMap<Any, Double>()
         val tokens = HashMap<Any, Long>()
 
