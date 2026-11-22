@@ -122,7 +122,7 @@
         android:layout_marginTop="4dp"
         android:fontFamily="monospace"
         android:lineSpacingExtra="4dp"
-        android:text="Claude Code    $52.10\nCodex          $21.40\nGemini CLI     $12.70"
+        android:text="Claude Code    $52.40\nCodex          $22.10\nGemini CLI     $11.70"
         android:textColor="@color/widget_text"
         android:textSize="13sp" />
 </LinearLayout>

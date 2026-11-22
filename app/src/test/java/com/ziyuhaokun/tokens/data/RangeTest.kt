@@ -46,5 +46,7 @@ class RangeTest {
         Range.entries.forEach { assertEquals(it, Range.fromId(it.id)) }
         assertEquals(Range.D7, Range.fromId("nope"))
         assertEquals(Range.D7, Range.fromId(null))
+        assertEquals("最近 7 天", Range.D7.receiptTitleZh)
+        assertEquals("LAST 7 DAYS", Range.D7.receiptTitleEn)
     }
 }

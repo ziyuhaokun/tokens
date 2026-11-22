@@ -10,14 +10,22 @@ import java.time.ZonedDateTime
  * 180D / 365D 用 `from/to` 日期区间请求：服务端的 `days=` 只实测过 1/7/30/90，
  * 而任意 from/to 区间热力图已经在用（365 天 ~1.5MB / 600ms）。
  */
-enum class Range(val id: String, val label: String, val days: Int) {
-    TODAY("today", "今天", 1),
-    H24("24H", "24H", 1),
-    D7("7D", "7D", 7),
-    D30("30D", "30D", 30),
-    D90("90D", "90D", 90),
-    D180("180D", "180D", 180),
-    D365("365D", "365D", 365);
+enum class Range(
+    val id: String,
+    val label: String,
+    val days: Int,
+    /** 小票中文副标题。 */
+    val receiptTitleZh: String,
+    /** 小票英文副标题。 */
+    val receiptTitleEn: String,
+) {
+    TODAY("today", "今天", 1, "今天", "TODAY"),
+    H24("24H", "24H", 1, "最近 24 小时", "LAST 24 HOURS"),
+    D7("7D", "7D", 7, "最近 7 天", "LAST 7 DAYS"),
+    D30("30D", "30D", 30, "最近 30 天", "LAST 30 DAYS"),
+    D90("90D", "90D", 90, "最近 90 天", "LAST 90 DAYS"),
+    D180("180D", "180D", 180, "最近 180 天", "LAST 180 DAYS"),
+    D365("365D", "365D", 365, "最近 365 天", "LAST 365 DAYS");
 
     val isHourly: Boolean get() = this == TODAY || this == H24
 

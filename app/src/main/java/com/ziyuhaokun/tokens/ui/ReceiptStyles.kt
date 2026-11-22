@@ -301,31 +301,9 @@ private fun chineseDuration(seconds: Long): String {
     }
 }
 
-/** 中文标题，覆盖全部 Range。新增 Range 时这里编译失败，必须补一条。 */
-private val ChineseTitles: Map<Range, String> = Range.entries.associateWith { range ->
-    when (range) {
-        Range.TODAY -> "今天"
-        Range.H24 -> "最近 24 小时"
-        Range.D7 -> "最近 7 天"
-        Range.D30 -> "最近 30 天"
-        Range.D90 -> "最近 90 天"
-        Range.D180 -> "最近 180 天"
-        Range.D365 -> "最近 365 天"
-    }
-}
-
-/** 英文标题，和 ReceiptBuilder 里那份一致。 */
-private val EnglishTitles: Map<Range, String> = Range.entries.associateWith { range ->
-    when (range) {
-        Range.TODAY -> "TODAY"
-        Range.H24 -> "LAST 24 HOURS"
-        Range.D7 -> "LAST 7 DAYS"
-        Range.D30 -> "LAST 30 DAYS"
-        Range.D90 -> "LAST 90 DAYS"
-        Range.D180 -> "LAST 180 DAYS"
-        Range.D365 -> "LAST 365 DAYS"
-    }
-}
+/** 小票标题唯一来源在 Range，这里只映射成 ReceiptStrings 需要的表。 */
+private val ChineseTitles: Map<Range, String> = Range.entries.associateWith { it.receiptTitleZh }
+private val EnglishTitles: Map<Range, String> = Range.entries.associateWith { it.receiptTitleEn }
 
 private const val ChineseDatePattern = "yyyy年M月d日 HH:mm"
 private const val LatinDatePattern = "yyyy-MM-dd HH:mm"

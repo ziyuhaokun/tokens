@@ -5,6 +5,32 @@ import org.json.JSONObject
 import java.time.OffsetDateTime
 import java.time.ZoneId
 
+/** token 分项口径：缓存读和缓存写都算进总量。小票和聚合共用这一处定义。 */
+data class TokenBreakdown(
+    val input: Long,
+    val output: Long,
+    val cacheRead: Long,
+    val cacheWrite5m: Long,
+    val cacheWrite1h: Long,
+    val reasoning: Long,
+) {
+    val cacheWrite: Long get() = cacheWrite5m + cacheWrite1h
+    val total: Long get() = input + output + cacheRead + cacheWrite + reasoning
+
+    operator fun plus(other: TokenBreakdown): TokenBreakdown = TokenBreakdown(
+        input + other.input,
+        output + other.output,
+        cacheRead + other.cacheRead,
+        cacheWrite5m + other.cacheWrite5m,
+        cacheWrite1h + other.cacheWrite1h,
+        reasoning + other.reasoning,
+    )
+
+    companion object {
+        val ZERO = TokenBreakdown(0L, 0L, 0L, 0L, 0L, 0L)
+    }
+}
+
 /**
  * 云端用量契约（GET /api/usage）。字段全部防御式读取：
  * 服务端没有版本号，多一个少一个字段都不能让整页崩掉。
@@ -23,10 +49,18 @@ data class Bucket(
     val cacheCreation1h: Long,
     val estimatedCost: Double,
 ) {
-    /** 与桌面端一致的口径：缓存读和缓存写都算进总量。 */
-    val tokens: Long
-        get() = inputTokens + outputTokens + cachedInputTokens +
-            reasoningOutputTokens + cacheCreation5m + cacheCreation1h
+    /** 唯一的 token 口径来源，小票分项和总量都从这里派生。 */
+    val breakdown: TokenBreakdown
+        get() = TokenBreakdown(
+            input = inputTokens,
+            output = outputTokens,
+            cacheRead = cachedInputTokens,
+            cacheWrite5m = cacheCreation5m,
+            cacheWrite1h = cacheCreation1h,
+            reasoning = reasoningOutputTokens,
+        )
+
+    val tokens: Long get() = breakdown.total
 }
 
 data class Session(

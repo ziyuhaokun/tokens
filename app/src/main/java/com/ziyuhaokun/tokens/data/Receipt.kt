@@ -55,23 +55,20 @@ object ReceiptBuilder {
         now: Long = System.currentTimeMillis(),
         zone: ZoneId = ZoneId.systemDefault(),
     ): ReceiptData {
-        val input = usage.buckets.sumOf { it.inputTokens }
-        val output = usage.buckets.sumOf { it.outputTokens }
-        val cacheRead = usage.buckets.sumOf { it.cachedInputTokens }
-        val cacheWrite = usage.buckets.sumOf { it.cacheCreation5m + it.cacheCreation1h }
-        val reasoning = usage.buckets.sumOf { it.reasoningOutputTokens }
+        // 分项与总量都从同一处 TokenBreakdown 派生，避免小票和首页口径漂移。
+        val tokens = usage.buckets.fold(TokenBreakdown.ZERO) { acc, bucket -> acc + bucket.breakdown }
 
         return ReceiptData(
             range = range,
-            title = titleOf(range),
+            title = range.receiptTitleEn,
             printedAt = now,
             number = "TK-" + Instant.ofEpochMilli(now).atZone(zone).format(NUMBER_FORMAT),
-            input = input,
-            output = output,
-            cacheRead = cacheRead,
-            cacheWrite = cacheWrite,
-            reasoning = reasoning,
-            totalTokens = usage.buckets.sumOf { it.tokens },
+            input = tokens.input,
+            output = tokens.output,
+            cacheRead = tokens.cacheRead,
+            cacheWrite = tokens.cacheWrite,
+            reasoning = tokens.reasoning,
+            totalTokens = tokens.total,
             costUsd = usage.buckets.sumOf { it.estimatedCost },
             tools = UsageAgg.bySource(usage)
                 .take(MAX_TOOL_LINES)
@@ -82,16 +79,5 @@ object ReceiptBuilder {
             dataFetchedAt = fetchedAt,
             stale = stale,
         )
-    }
-
-    /** 新增 Range 时这里会编译失败，必须补一条英文副标题。 */
-    private fun titleOf(range: Range): String = when (range) {
-        Range.TODAY -> "TODAY"
-        Range.H24 -> "LAST 24 HOURS"
-        Range.D7 -> "LAST 7 DAYS"
-        Range.D30 -> "LAST 30 DAYS"
-        Range.D90 -> "LAST 90 DAYS"
-        Range.D180 -> "LAST 180 DAYS"
-        Range.D365 -> "LAST 365 DAYS"
     }
 }

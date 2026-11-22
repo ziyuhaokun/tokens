@@ -215,11 +215,6 @@ class SettingsStore(private val context: Context) {
         context.tokensDataStore.edit { it[Keys.rangeId] = range.id }
     }
 
-    suspend fun saveBaseUrl(url: String) {
-        val normalized = normalizeBaseUrl(url) ?: return
-        context.tokensDataStore.edit { it[Keys.baseUrl] = normalized }
-    }
-
     suspend fun saveThemeMode(mode: ThemeMode) {
         context.tokensDataStore.edit { it[Keys.themeMode] = mode.id }
     }
@@ -265,11 +260,5 @@ class SettingsStore(private val context: Context) {
 
     suspend fun saveSkippedVersion(tag: String) {
         context.tokensDataStore.edit { it[Keys.skippedVersion] = tag }
-    }
-
-    suspend fun saveUploadProject(value: Boolean?) {
-        context.tokensDataStore.edit { prefs ->
-            if (value == null) prefs.remove(Keys.uploadProject) else prefs[Keys.uploadProject] = value
-        }
     }
 }
