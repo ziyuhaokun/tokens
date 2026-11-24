@@ -9,8 +9,8 @@ class FmtTest {
     fun `handle gets an at sign, fallback stays the site name`() {
         assertEquals("@ziyuhaokun", Fmt.handle("ziyuhaokun"))
         assertEquals("@me", Fmt.handle("@me"))
-        assertEquals("vibecafe.ai", Fmt.handle(null))
-        assertEquals("vibecafe.ai", Fmt.handle("  "))
+        assertEquals("vibefriends.com", Fmt.handle(null))
+        assertEquals("vibefriends.com", Fmt.handle("  "))
     }
 
     @Test

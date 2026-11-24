@@ -59,4 +59,30 @@ class SettingsStoreTest {
         assertEquals("http://10.0.2.2:8080", resolved.baseUrl)
         assertFalse(resolved.serverAddressInvalid)
     }
+
+    @Test
+    fun `legacy vibecafe domain migrates to vibefriends while keeping key`() {
+        val resolved = resolveStoredCredentials(
+            keyBlob = "encrypted-blob",
+            rawBaseUrl = "https://vibecafe.ai",
+            decrypt = { "vbu_secret" },
+        )
+
+        assertEquals("vbu_secret", resolved.apiKey)
+        assertEquals(DEFAULT_BASE_URL, resolved.baseUrl)
+        assertFalse(resolved.serverAddressInvalid)
+    }
+
+    @Test
+    fun `insecure legacy vibecafe http stays rejected`() {
+        val resolved = resolveStoredCredentials(
+            keyBlob = "encrypted-blob",
+            rawBaseUrl = "http://vibecafe.ai",
+            decrypt = { "vbu_secret" },
+        )
+
+        assertNull(resolved.apiKey)
+        assertEquals(DEFAULT_BASE_URL, resolved.baseUrl)
+        assertTrue(resolved.serverAddressInvalid)
+    }
 }

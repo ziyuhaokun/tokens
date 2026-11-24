@@ -209,7 +209,7 @@ fun ReceiptCard(
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            text = "vibecafe.ai",
+            text = "vibefriends.com",
             color = theme.inkSoft,
             fontSize = 11.sp,
             fontFamily = ReceiptFont,

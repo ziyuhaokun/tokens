@@ -19,10 +19,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-val DEFAULT_BASE_URL = "https://vibecafe.ai"
+val DEFAULT_BASE_URL = "https://vibefriends.com"
+
+private val LEGACY_BASE_HOSTS = setOf("vibecafe.ai", "www.vibecafe.ai")
 
 /**
- * 归一化服务器地址：裸域名补 https，去掉 query/fragment 与尾部斜杠。
+ * 归一化服务器地址：裸域名补 https，去掉 query/fragment 与尾部斜杠；
+ * 旧默认域名 vibecafe.ai 迁移到 vibefriends.com。
  * 只放行 https；本机调试地址（localhost / 127.0.0.1 / 10.0.2.2）例外放行 http。
  * 返回 null 表示这个地址不能用——API Key 会被发到那里，不能让它随便是谁。
  */
@@ -35,9 +38,12 @@ fun normalizeBaseUrl(raw: String): String? {
         "https://$trimmed"
     }
     val parsed = runCatching { withScheme.toHttpUrlOrNull() }.getOrNull() ?: return null
-    val host = parsed.host
+    val host = parsed.host.lowercase()
     val loopback = host == "localhost" || host == "127.0.0.1" || host == "10.0.2.2"
     if (!parsed.isHttps && !loopback) return null
+    if (parsed.isHttps && host in LEGACY_BASE_HOSTS && parsed.port == 443 && parsed.encodedPath == "/") {
+        return DEFAULT_BASE_URL
+    }
     return parsed.newBuilder()
         .query(null)
         .fragment(null)

@@ -100,7 +100,7 @@ fun SetupScreen(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "登录 vibecafe.ai，直接读云端用量。",
+            text = "登录 vibefriends.com，直接读云端用量。",
             color = Palette.Muted,
             fontSize = TokensType.Body,
         )
@@ -124,7 +124,7 @@ fun SetupScreen(
                         ),
                     ) {
                         Text(
-                            text = if (login is LoginPhase.Starting) "正在获取验证码…" else "登录 vibecafe.ai",
+                            text = if (login is LoginPhase.Starting) "正在获取验证码…" else "登录 vibefriends.com",
                             fontSize = TokensType.Body,
                             fontWeight = FontWeight.Medium,
                         )
@@ -172,7 +172,7 @@ fun SetupScreen(
         Spacer(Modifier.height(20.dp))
         Text(
             text = buildAnnotatedString {
-                append("登录后可随时在 vibecafe.ai 撤销这个 App 的访问。也可以用 vibe-usage CLI 生成的 ")
+                append("登录后可随时在 vibefriends.com 撤销这个 App 的访问。也可以用 vibe-usage CLI 生成的 ")
                 withStyle(SpanStyle(fontFamily = NumericFont)) { append("vbu_") }
                 append(" Key 手动登录。")
             },

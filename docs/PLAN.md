@@ -1,6 +1,6 @@
 # tokens — Android 云端 Token 用量查看器
 
-一个只做一件事的安卓 App：用 `vbu_` API Key 读 vibecafe.ai 的云端用量，展示金额 / tokens / 趋势，并提供一个桌面小组件。
+一个只做一件事的安卓 App：用 `vbu_` API Key 读 vibefriends.com 的云端用量，展示金额 / tokens / 趋势，并提供一个桌面小组件。
 
 ## 1. 目标与非目标
 

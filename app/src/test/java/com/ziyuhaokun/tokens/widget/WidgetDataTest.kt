@@ -29,7 +29,7 @@ class WidgetDataTest {
         accent: AccentChoice = AccentChoice.MONO,
     ) = StoredSettings(
         apiKey = apiKey,
-        baseUrl = "https://vibecafe.ai",
+        baseUrl = "https://vibefriends.com",
         range = Range.D7,
         uploadProject = null,
         themeMode = themeMode,

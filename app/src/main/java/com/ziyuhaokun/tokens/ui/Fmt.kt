@@ -14,7 +14,7 @@ val LocalNumberFormats = staticCompositionLocalOf { NumberFormats.DEFAULT }
 object Fmt {
     /** 页头小字：有用户名就加 @（已经带 @ 的不重复加），没有就回退到站点名。 */
     fun handle(handle: String?): String = when {
-        handle.isNullOrBlank() -> "vibecafe.ai"
+        handle.isNullOrBlank() -> "vibefriends.com"
         handle.startsWith("@") -> handle
         else -> "@$handle"
     }

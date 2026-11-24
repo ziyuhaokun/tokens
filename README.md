@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/minSdk-26-111827?style=flat-square" alt="minSdk 26">
 </p>
 
-安卓上的 [vibecafe.ai](https://vibecafe.ai) 用量查看器。API Key 加密进 Android Keystore，用量缓存在本机，断网也能看上次的数字，不会出现假 0。
+安卓上的 [vibefriends.com](https://vibefriends.com) 用量查看器。API Key 加密进 Android Keystore，用量缓存在本机，断网也能看上次的数字，不会出现假 0。
 
 <p align="center">
   <img src="docs/assets/overview.png" width="380" alt="概览：七档时间范围、费用面积图和排行">
@@ -99,7 +99,7 @@ TOKENS_KEY_PASSWORD=...
 
 没有这四项时 `assembleRelease` 会直接报错，不会再悄悄产出未签名包；只想自己装着试，用 `assembleDebug`。`.gitignore` 已忽略 `*.jks` / `*.keystore`。
 
-登录有两条路，都在引导页。浏览器设备码：App 给出验证码并打开确认页，确认后自动完成；确认链接必须是 https，且和 API 地址同域名。手动：填 `vbu_…`，默认打码。高级设置可改服务器，默认 `https://vibecafe.ai`，只放行 https；本机调试可用 `http://localhost` / `127.0.0.1` / `10.0.2.2`。先验证，通过才落盘。退出登录会清 Key 和全部缓存。
+登录有两条路，都在引导页。浏览器设备码：App 给出验证码并打开确认页，确认后自动完成；确认链接必须是 https，且和 API 地址同域名。手动：填 `vbu_…`，默认打码。高级设置可改服务器，默认 `https://vibefriends.com`，只放行 https；本机调试可用 `http://localhost` / `127.0.0.1` / `10.0.2.2`。先验证，通过才落盘。退出登录会清 Key 和全部缓存。
 
 桌面：长按空白处 → 小部件 → Tokens，或在设置页点「添加到桌面」。小米机型会另外引导打开「桌面快捷方式」权限。
 
@@ -120,7 +120,7 @@ flowchart LR
     Fetch --> API
     Fetch --> Disk
   end
-  API --> Cloud[vibecafe.ai]
+  API --> Cloud[vibefriends.com]
 ```
 
 单模块 `:app`，`AppContainer` 手写组装，不上 Hilt / Retrofit / Room。
@@ -158,7 +158,7 @@ flowchart LR
 
 | 场景 | 发出去的 | 去向 |
 | --- | --- | --- |
-| 用量请求 | Bearer API Key（`vbu_…`，HTTPS）、本机时区 | 你填的服务器，默认 vibecafe.ai |
+| 用量请求 | Bearer API Key（`vbu_…`，HTTPS）、本机时区 | 你填的服务器，默认 vibefriends.com |
 | 设备码登录 | 厂商 + 型号、`clientName="Tokens Android"` | 同上 |
 | 检查更新 / 下载新版本 | 只有请求本身（`User-Agent: Tokens-Android`），不带 Key、不带账号和设备信息 | `api.github.com`，下载走 `github.com` 与 GitHub 发布文件域名 |
 | 小票分享 | 一张 PNG | 你自己选的分享目标 |
@@ -172,4 +172,4 @@ flowchart LR
 - `sessions` 可能是空数组，这时「活跃」显示 0，并提示服务端没有 sessions。
 - 界面文案目前只有中文。小票可以选 English 或中英混合。
 
-**0.11.5** · 2026-11-22
+**0.11.6** · 2026-11-24

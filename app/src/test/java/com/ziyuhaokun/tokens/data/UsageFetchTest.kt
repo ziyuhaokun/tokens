@@ -217,7 +217,7 @@ class UsageFetchTest {
 
     private fun settings(key: String = "vbu_test") = StoredSettings(
         apiKey = key,
-        baseUrl = "https://vibecafe.ai",
+        baseUrl = "https://vibefriends.com",
         range = Range.D7,
         uploadProject = null,
     )
