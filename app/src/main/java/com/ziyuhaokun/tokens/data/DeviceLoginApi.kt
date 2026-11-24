@@ -4,6 +4,7 @@ import android.os.Build
 import com.ziyuhaokun.tokens.data.UsageApiException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -61,10 +62,12 @@ class DeviceLoginApi(
                 deviceCode = json.optString("deviceCode"),
                 userCode = userCode,
                 // 兜底拼链接时验证码必须编码，否则服务端回一个带 & 的码就能注入额外参数。
-                verificationUri = json.optString("verificationUriComplete")
-                    .ifBlank {
-                        json.optString("verificationUri") + "?code=" + URLEncoder.encode(userCode, "UTF-8")
-                    },
+                verificationUri = resolveVerificationUri(
+                    rawComplete = json.optString("verificationUriComplete"),
+                    rawUri = json.optString("verificationUri"),
+                    userCode = userCode,
+                    baseUrl = baseUrl,
+                ),
                 intervalSeconds = json.optInt("interval", 5).coerceIn(2, 60),
                 expiresInSeconds = json.optInt("expiresIn", 900).coerceIn(60, 3600),
             ).also {
@@ -121,6 +124,44 @@ class DeviceLoginApi(
 
     companion object {
         const val CLIENT_NAME = "Tokens Android"
+
+        private val INTERNAL_BIND_HOSTS = setOf("0.0.0.0", "127.0.0.1", "localhost")
+
+        /**
+         * 服务端在容器 / 反代后有时会把本机监听地址（如 https://0.0.0.0:3000/usage/device）
+         * 拼进 verificationUri。此时把 scheme/host/port 还原成用户请求的 baseUrl，
+         * 第三方未知域名原样保留交由 UI 层的信任校验拦截。
+         */
+        internal fun resolveVerificationUri(
+            rawComplete: String,
+            rawUri: String,
+            userCode: String,
+            baseUrl: String,
+        ): String {
+            val candidate = rawComplete.ifBlank {
+                if (rawUri.isBlank()) ""
+                else rawUri + "?code=" + URLEncoder.encode(userCode, "UTF-8")
+            }
+            if (candidate.isBlank()) return ""
+            if (candidate.any { it.isWhitespace() || it.isISOControl() || it == '\\' || it == '@' }) {
+                return candidate
+            }
+            val parsed = runCatching { candidate.toHttpUrlOrNull() }.getOrNull() ?: return candidate
+            val base = normalizeBaseUrl(baseUrl)
+                ?.let { runCatching { it.toHttpUrlOrNull() }.getOrNull() }
+                ?: return candidate
+            val host = parsed.host.lowercase()
+            val baseHost = base.host.lowercase()
+            val baseIsLoopback = baseHost == "localhost" || baseHost == "127.0.0.1"
+            val shouldRewrite = host == "0.0.0.0" || (!baseIsLoopback && host in INTERNAL_BIND_HOSTS)
+            if (!shouldRewrite) return candidate
+            return parsed.newBuilder()
+                .scheme(base.scheme)
+                .host(base.host)
+                .port(base.port)
+                .build()
+                .toString()
+        }
 
         /** 设备名只用于服务端的登录记录，不带账号信息。 */
         fun hostnameOf(): String = listOf(Build.MANUFACTURER, Build.MODEL)
